@@ -1,3 +1,20 @@
+"""
+backend.routers.expenses
+------------------------
+FastAPI router for expense CRUD operations (``/expenses`` prefix).
+
+Endpoints
+~~~~~~~~~
+GET    /expenses          List all expenses; supports ``start_date``,
+                          ``end_date``, and ``store`` query-string filters.
+POST   /expenses          Create a new expense record.
+GET    /expenses/{id}     Retrieve a single expense by primary-key ID.
+PUT    /expenses/{id}     Partially update an existing expense.
+DELETE /expenses/{id}     Delete an expense (returns HTTP 204 No Content).
+
+All responses use the ``ExpenseResponse`` Pydantic schema.
+"""
+
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,6 +24,7 @@ from models import Expense
 from schemas import ExpenseCreate, ExpenseUpdate, ExpenseResponse
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
 
 
 def _to_response(expense: Expense) -> ExpenseResponse:

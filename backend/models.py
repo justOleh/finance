@@ -1,3 +1,24 @@
+"""
+backend.models
+--------------
+SQLAlchemy ORM models for the My Finance application.
+
+Tables
+~~~~~~
+users
+    Optional user accounts.  For the current single/two-user use-case the
+    ``user_id`` foreign-key on expenses is nullable, so authentication is not
+    required.
+
+expenses
+    Core table that stores every tracked expense.  The ``items`` column holds a
+    JSON-encoded list of ``{"name": str, "price": float}`` dicts.  The Python
+    ``items`` property transparently serialises/deserialises the JSON so callers
+    work with plain Python lists.
+
+All ``created_at`` timestamps are stored in UTC.
+"""
+
 import json
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey, DateTime
@@ -6,6 +27,7 @@ from database import Base
 
 
 def _utcnow():
+    """Return the current UTC datetime (used as a column default)."""
     return datetime.now(timezone.utc)
 
 
