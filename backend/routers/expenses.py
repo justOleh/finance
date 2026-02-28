@@ -5,12 +5,13 @@ FastAPI router for expense CRUD operations (``/expenses`` prefix).
 
 Endpoints
 ~~~~~~~~~
-GET    /expenses          List all expenses; supports ``start_date``,
-                          ``end_date``, and ``store`` query-string filters.
-POST   /expenses          Create a new expense record.
-GET    /expenses/{id}     Retrieve a single expense by primary-key ID.
-PUT    /expenses/{id}     Partially update an existing expense.
-DELETE /expenses/{id}     Delete an expense (returns HTTP 204 No Content).
+GET    /expenses                 List all expenses; supports ``start_date``,
+                                 ``end_date``, and ``store`` query-string filters.
+POST   /expenses                 Create a new expense record.
+GET    /expenses/monthly-summary Monthly aggregated totals and counts.
+GET    /expenses/{id}            Retrieve a single expense by primary-key ID.
+PUT    /expenses/{id}            Partially update an existing expense.
+DELETE /expenses/{id}            Delete an expense (returns HTTP 204 No Content).
 
 All responses use the ``ExpenseResponse`` Pydantic schema.
 """
@@ -18,10 +19,11 @@ All responses use the ``ExpenseResponse`` Pydantic schema.
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Expense
-from schemas import ExpenseCreate, ExpenseUpdate, ExpenseResponse
+from schemas import ExpenseCreate, ExpenseUpdate, ExpenseResponse, MonthlySummary
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -39,6 +41,32 @@ def _to_response(expense: Expense) -> ExpenseResponse:
         user_id=expense.user_id,
         created_at=expense.created_at,
     )
+
+
+@router.get("/monthly-summary", response_model=list[MonthlySummary])
+def monthly_summary(db: Session = Depends(get_db)):
+    """Return total spending and expense count grouped by year and month."""
+    rows = (
+        db.query(
+            func.strftime("%Y", Expense.date).label("year"),
+            func.strftime("%m", Expense.date).label("month"),
+            func.sum(Expense.total).label("total"),
+            func.count(Expense.id).label("count"),
+        )
+        .group_by(
+            func.strftime("%Y", Expense.date),
+            func.strftime("%m", Expense.date),
+        )
+        .order_by(
+            func.strftime("%Y", Expense.date),
+            func.strftime("%m", Expense.date),
+        )
+        .all()
+    )
+    return [
+        MonthlySummary(year=int(r.year), month=int(r.month), total=r.total, count=r.count)
+        for r in rows
+    ]
 
 
 @router.get("/", response_model=list[ExpenseResponse])
