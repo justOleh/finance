@@ -1,3 +1,29 @@
+"""
+frontend.app
+------------
+Streamlit web UI for the My Finance expense tracker.
+
+Pages (sidebar navigation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Dashboard
+    Summary metrics (total count, total spent, average), a bar chart of
+    spending by store/merchant, and a filterable table of all expenses.
+    Date-range and store filters are available in the sidebar.
+
+Add Expense
+    Manual expense entry form.  Supports a dynamic list of line items
+    (name + price per item).  Submits to ``POST /expenses`` on the backend.
+
+Upload Receipt
+    Upload a JPEG/PNG receipt photo.  The image is sent to
+    ``POST /receipts/upload`` on the backend which proxies it to the Receipt
+    Parser service and auto-creates an expense record from the parsed data.
+
+Environment variables
+~~~~~~~~~~~~~~~~~~~~~
+BACKEND_URL  Base URL of the backend API.  Default: ``http://localhost:8000``
+"""
+
 import os
 from datetime import date, timedelta
 import httpx
@@ -28,7 +54,7 @@ def fetch_expenses(start_date=None, end_date=None, store=None) -> list[dict]:
     if store:
         params["store"] = store
     try:
-        resp = httpx.get(f"{BACKEND_URL}/expenses", params=params, timeout=10)
+        resp = httpx.get(f"{BACKEND_URL}/expenses/", params=params, timeout=10)
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:
@@ -38,7 +64,7 @@ def fetch_expenses(start_date=None, end_date=None, store=None) -> list[dict]:
 
 def post_expense(payload: dict) -> dict | None:
     try:
-        resp = httpx.post(f"{BACKEND_URL}/expenses", json=payload, timeout=10)
+        resp = httpx.post(f"{BACKEND_URL}/expenses/", json=payload, timeout=10)
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:

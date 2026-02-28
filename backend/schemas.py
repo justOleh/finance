@@ -1,3 +1,23 @@
+"""
+backend.schemas
+---------------
+Pydantic v2 request/response schemas for the My Finance API.
+
+Classes
+~~~~~~~
+ExpenseCreate
+    Payload for ``POST /expenses``.
+ExpenseUpdate
+    Partial-update payload for ``PUT /expenses/{id}``.  All fields are
+    optional; only supplied fields are applied.
+ExpenseResponse
+    Full expense representation returned by every expense endpoint.
+UserCreate
+    Payload for creating a user account (reserved for future auth).
+UserResponse
+    Public user representation (no password hash exposed).
+"""
+
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict

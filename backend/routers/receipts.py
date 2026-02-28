@@ -1,3 +1,26 @@
+"""
+backend.routers.receipts
+------------------------
+FastAPI router for receipt image upload (``/receipts`` prefix).
+
+Workflow
+~~~~~~~~
+1. Client uploads a JPEG or PNG image via ``POST /receipts/upload``.
+2. The image is saved to ``./data/receipts/<uuid>.<ext>`` on disk.
+3. The backend forwards the image to the Receipt Parser microservice
+   (URL configured via ``RECEIPT_PARSER_URL`` env var).
+4. The parsed store, date, items, and total are used to create an
+   ``Expense`` record in the database.
+5. If the parser service is unavailable the upload still succeeds: an
+   expense record is created with ``store="Unknown"`` and ``total=0.0``
+   so the user can edit it manually later.
+
+Environment variables
+~~~~~~~~~~~~~~~~~~~~~
+RECEIPT_PARSER_URL  URL of the Receipt Parser service.
+                    Default: ``http://localhost:8001``
+"""
+
 import os
 import uuid
 from datetime import date as date_type
@@ -10,6 +33,7 @@ from models import Expense
 from schemas import ExpenseResponse
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
+
 
 RECEIPT_PARSER_URL = os.getenv("RECEIPT_PARSER_URL", "http://localhost:8001")
 RECEIPTS_DIR = Path("./data/receipts")
