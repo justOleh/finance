@@ -65,6 +65,10 @@ db.sqlite3-journal
 backend/data/
 *.db
 
+# Node.js / React frontend
+frontend/node_modules/
+frontend/dist/
+
 # Flask stuff:
 instance/
 .webassets-cache
