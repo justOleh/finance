@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+  }
+
+  * {
+    @apply border-slate-700;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-slate-900 rounded-2xl border border-slate-800 shadow-xl;
+  }
+
+  .card-glass {
+    @apply bg-slate-900/60 backdrop-blur-sm rounded-2xl border border-slate-700/50 shadow-xl;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500
+           text-white font-medium text-sm transition-all duration-150 shadow-lg shadow-brand-900/40
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700
+           text-slate-200 font-medium text-sm transition-all duration-150 border border-slate-700;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-900/50 hover:bg-red-800/60
+           text-red-300 font-medium text-sm transition-all duration-150 border border-red-800/50;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100
+           placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50
+           focus:border-brand-500 transition-all duration-150;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-slate-300 mb-1.5;
+  }
+
+  .stat-card {
+    @apply card p-5 flex flex-col gap-1;
+  }
+
+  .stat-label {
+    @apply text-xs font-medium text-slate-400 uppercase tracking-wider;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold text-white;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+           text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-150 cursor-pointer;
+  }
+
+  .nav-item-active {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+           text-white bg-brand-600/20 border border-brand-500/30;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-slate-700 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-slate-600; }
+
+/* Recharts overrides */
+.recharts-text { fill: #94a3b8 !important; }
+.recharts-cartesian-axis-tick-value { fill: #94a3b8; font-size: 12px; }
+.recharts-legend-item-text { color: #94a3b8 !important; }
