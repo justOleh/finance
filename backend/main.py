@@ -41,6 +41,13 @@ async def lifespan(app: FastAPI):
     """Create required directories and database tables on startup."""
     Path("./data/receipts").mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    # Seed dummy data on first run (no-op if data already exists)
+    try:
+        from seed_data import seed
+        seed()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Seed data failed: %s", exc)
     yield
 
 

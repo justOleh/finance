@@ -23,6 +23,13 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 
+class MonthlySummary(BaseModel):
+    year: int
+    month: int
+    total: float
+    count: int
+
+
 class ExpenseCreate(BaseModel):
     date: date
     store: str

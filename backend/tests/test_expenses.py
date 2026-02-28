@@ -118,3 +118,30 @@ def test_filter_expenses_by_store(client):
     assert resp.status_code == 200
     results = resp.json()
     assert all("Super" in e["store"] for e in results)
+
+
+def test_monthly_summary(client):
+    client.post("/expenses/", json=SAMPLE_EXPENSE)
+    # Add a second expense in the same month
+    second = {**SAMPLE_EXPENSE, "total": 10.00}
+    client.post("/expenses/", json=second)
+    # Add an expense in a different month
+    other_month = {**SAMPLE_EXPENSE, "date": "2024-02-20", "total": 5.00}
+    client.post("/expenses/", json=other_month)
+
+    resp = client.get("/expenses/monthly-summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+
+    jan = next((m for m in data if m["month"] == 1), None)
+    assert jan is not None
+    assert jan["year"] == 2024
+    assert jan["count"] == 2
+    assert abs(jan["total"] - (6.48 + 10.00)) < 0.01
+
+    feb = next((m for m in data if m["month"] == 2), None)
+    assert feb is not None
+    assert feb["count"] == 1
+    assert abs(feb["total"] - 5.00) < 0.01
+
