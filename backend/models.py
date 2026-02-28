@@ -1,8 +1,12 @@
 import json
-from datetime import date, datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -11,7 +15,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=_utcnow)
 
     expenses = relationship("Expense", back_populates="user")
 
@@ -27,7 +31,7 @@ class Expense(Base):
     receipt_image_path = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", back_populates="expenses")
 
