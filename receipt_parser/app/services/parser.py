@@ -1,42 +1,109 @@
 from datetime import date
-from qreader import QReader
-import cv2 as cv
-import numpy as np
-import requests 
+import base64
+import json
+import re
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+from datetime import datetime
 
-# Create a QReader instance
-qreader = QReader()
+load_dotenv()
+
+client = OpenAI(api_key=os.getenv("API_KEY"))
+
+RECEIPT_PROMPT = """Extract structured data from this receipt image.
+Don't add any information that is not explicitly present in the image.
+Return ONLY valid JSON (no markdown, no code fences).
+Return a JSON object with keys:
+- items (list of {name, amount, unit, unit_price, item_price})
+  where each item has:
+    - name (str): item description (e.g., "beef")
+    - amount (float): quantity (e.g., 0.5)
+    - unit (str): unit of measurement (e.g., "kg", "pcs", "l")
+    - unit_price (float): price per unit (e.g., 300)
+    - item_price (float): total price for this item (e.g., 150)
+- store (str): store name
+- date (str): date in ISO-8601 format
+- total (float): total receipt amount
+- raw_text (str): full OCR text from receipt
+
+Here is list of possible item names that may appear on the receipt,
+use them preferably when matching items, but feel free to extract any other
+items that are present on the receipt. If item muches one from the list, use the name from the list:
+
+Мисливські ковбаски, Лаваш вірменський, Шия свиняча.
+"""
 
 
-def parse_receipt_image(image_bytes: bytes) -> dict:  # noqa: ARG001
-    """
-    Decode QR code from receipt image and fetch tax cabinet data using the URL in the QR.
-    """
-    # Convert image bytes to OpenCV format
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    image = cv.imdecode(nparr, cv.IMREAD_COLOR)
-    image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+def _extract_text_from_response(resp) -> str:
+    """Extract text content from OpenAI response."""
+    if hasattr(resp, "output_text"):
+        return resp.output_text
+    if hasattr(resp, "output") and resp.output:
+        return "".join(item.get("text", "") for item in resp.output)
+    return ""
 
-    # Use the detect_and_decode function to get the decoded QR data
-    # qreader returns a tuple of decoded strings
-    decoded_text = qreader.detect_and_decode(image=image)
 
-    print("Decoded QR data:", decoded_text)
-
-    result = {"raw_text": decoded_text}
+def _parse_json_from_text(text: str) -> dict | None:
+    """Parse JSON, stripping markdown code fences if needed."""
+    # strip markdown fences
+    cleaned = text.strip()
+    if cleaned.startswith("```") and cleaned.endswith("```"):
+        cleaned = cleaned.strip("`").removeprefix("json").strip()
     
-    # Extract the first decoded URL from the tuple
-    if decoded_text and len(decoded_text) > 0:
-        qr_url = decoded_text[0]
-        print(f"QR URL: {qr_url}")
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+
+
+def _extract_items_from_raw_text(raw_text: str) -> list:
+    """Extract items (name, price) from raw text using regex."""
+    items = []
+    if not raw_text:
+        return items
+    
+    for line in raw_text.splitlines():
+        match = re.match(r"^(.*\S)\s+(\d+\.\d{2})$", line.strip())
+        if match:
+            items.append({"name": match.group(1), "price": float(match.group(2))})
+    return items
+
+
+def parse_receipt_image(image_bytes: bytes) -> dict:
+    """Send receipt image to OpenAI and return structured data."""
+    # encode image as base64 data URL
+    b64 = base64.b64encode(image_bytes).decode()
+    data_url = f"data:image/jpeg;base64,{b64}"
+
+    resp = client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {"role": "user", "content": RECEIPT_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_image", "image_url": data_url}
+                ],
+            },
+        ],
+    )
+
+    # Extract and parse response
+    output_text = _extract_text_from_response(resp)
+    parsed = _parse_json_from_text(output_text)
+
+    # Normalize: if GPT returned "where" instead of "items", rename it
+    if parsed and isinstance(parsed, dict):
+        if "where" in parsed and "items" not in parsed:
+            parsed["items"] = parsed.pop("where")
         
-        # Fetch the tax cabinet data using the URL from QR code
-        try:
-            tax_response = requests.get(qr_url)
-            result["tax_cabinet_response"] = tax_response.text
-            print("Tax cabinet response status:", tax_response.status_code)
-        except Exception as e:
-            result["tax_cabinet_error"] = str(e)
-            print(f"Error fetching tax cabinet: {e}")
-    
-    return result
+        # Fallback: extract items from raw text if GPT didn't find them
+        if not parsed.get("items"):
+            parsed["items"] = _extract_items_from_raw_text(parsed.get("raw_text", ""))
+
+        parsed["date"] = datetime.now().date().isoformat()  
+
+    # return {"gpt_result": output_text, "gpt_json": parsed}
+    return {"gpt_json": parsed}
+
