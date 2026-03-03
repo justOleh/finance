@@ -3,9 +3,16 @@ import base64
 import json
 import re
 import os
+from io import BytesIO
 from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
+from PIL import Image
+from pillow_heif import register_heif_opener
+
+register_heif_opener()
+
+HEIC_MIME_TYPES = {"image/heic", "image/heif"}
 
 load_dotenv()
 
@@ -29,12 +36,6 @@ Return a JSON object with keys:
 - date (str): date in ISO-8601 format
 - total (float): total receipt amount
 - raw_text (str): full OCR text from receipt
-
-Here is list of possible item names that may appear on the receipt,
-use them preferably when matching items, but feel free to extract any other
-items that are present on the receipt. If item muches one from the list, use the name from the list:
-
-Мисливські ковбаски, Лаваш вірменський, Шия свиняча.
 """
 
 
@@ -73,12 +74,36 @@ def _extract_items_from_raw_text(raw_text: str) -> list:
     return items
 
 
-def parse_receipt_image(image_bytes: bytes) -> dict:
+def convert_heic_to_jpeg(image_bytes: bytes) -> bytes:
+    with Image.open(BytesIO(image_bytes)) as image:
+        rgb_image = image.convert("RGB")
+        output = BytesIO()
+        rgb_image.save(output, format="JPEG", quality=95)
+        return output.getvalue()
+
+
+def prepare_parser_image(filename: str | None, content_type: str | None, image_bytes: bytes) -> tuple[str, str, bytes]:
+    file_ext = os.path.splitext(filename or "")[1].lower()
+    current_type = content_type or "application/octet-stream"
+
+    if current_type in HEIC_MIME_TYPES or file_ext in {".heic", ".heif"}:
+        image_bytes = convert_heic_to_jpeg(image_bytes)
+        current_type = "image/jpeg"
+        file_ext = ".jpg"
+
+    if not file_ext:
+        file_ext = ".jpg" if current_type == "image/jpeg" else ".png"
+
+    output_filename = f"upload{file_ext}"
+    return output_filename, current_type, image_bytes
+
+
+def parse_receipt_image(image_bytes: bytes, content_type: str = "image/jpeg") -> dict:
     """Send receipt image to OpenAI and return structured data."""
     client = _get_openai_client()
     # encode image as base64 data URL
     b64 = base64.b64encode(image_bytes).decode()
-    data_url = f"data:image/jpeg;base64,{b64}"
+    data_url = f"data:{content_type};base64,{b64}"
 
     resp = client.responses.create(
         model="gpt-4o-mini",

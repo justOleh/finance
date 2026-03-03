@@ -36,7 +36,7 @@ export default function AddExpense() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
-    if (!form.store.trim()) { setError('Store name is required.'); return }
+    if (!form.store.trim()) { setError('Назва магазину обовʼязкова.'); return }
     const payload = {
       date: form.date,
       store: form.store.trim(),
@@ -62,8 +62,8 @@ export default function AddExpense() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <CheckCircle2 size={48} className="text-green-400" />
-        <p className="text-white font-semibold text-lg">Expense saved!</p>
-        <p className="text-slate-400 text-sm">Redirecting to dashboard…</p>
+        <p className="text-white font-semibold text-lg">Витрату збережено!</p>
+        <p className="text-slate-400 text-sm">Переходимо на панель…</p>
       </div>
     )
   }
@@ -71,27 +71,27 @@ export default function AddExpense() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Add Expense</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Record a new purchase or payment</p>
+        <h1 className="text-2xl font-bold text-white">Додати витрату</h1>
+        <p className="text-slate-400 text-sm mt-0.5">Запишіть нову покупку або платіж</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* ── Basic info ─────────────────────────────────────────────────── */}
         <div className="card p-5 space-y-4">
           <h2 className="font-semibold text-white text-sm uppercase tracking-wider text-slate-400">
-            Details
+            Деталі
           </h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Date</label>
+              <label className="label">Дата</label>
               <input type="date" className="input" value={form.date} onChange={set('date')} required />
             </div>
             <div>
-              <label className="label">Store / Merchant</label>
+              <label className="label">Магазин / Продавець</label>
               <input
                 type="text"
                 className="input"
-                placeholder="e.g. Whole Foods"
+                placeholder="наприклад, Сільпо"
                 value={form.store}
                 onChange={set('store')}
                 required
@@ -99,10 +99,10 @@ export default function AddExpense() {
             </div>
           </div>
           <div>
-            <label className="label">Notes (optional)</label>
+            <label className="label">Нотатки (необовʼязково)</label>
             <textarea
               className="input resize-none h-20"
-              placeholder="Any additional notes…"
+              placeholder="Додаткові примітки…"
               value={form.notes}
               onChange={set('notes')}
             />
@@ -113,10 +113,10 @@ export default function AddExpense() {
         <div className="card p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-white text-sm uppercase tracking-wider text-slate-400">
-              Items
+              Позиції
             </h2>
             <button type="button" onClick={addItem} className="btn-secondary text-xs py-1">
-              <Plus size={13} /> Add Item
+              <Plus size={13} /> Додати позицію
             </button>
           </div>
 
@@ -126,14 +126,14 @@ export default function AddExpense() {
                 <input
                   type="text"
                   className="input flex-1"
-                  placeholder={`Item ${idx + 1} name`}
+                  placeholder={`Назва позиції ${idx + 1}`}
                   value={item.name}
                   onChange={setItem(idx, 'name')}
                 />
                 <input
                   type="number"
                   className="input w-28"
-                  placeholder="Price"
+                  placeholder="Ціна"
                   min="0"
                   step="0.01"
                   value={item.price}
@@ -156,14 +156,14 @@ export default function AddExpense() {
             onClick={autoTotal}
             className="btn-secondary text-xs py-1"
           >
-            Auto-calculate Total
+            Автообчислення суми
           </button>
         </div>
 
         {/* ── Total & submit ─────────────────────────────────────────────── */}
         <div className="card p-5 space-y-4">
           <div>
-            <label className="label">Total ($)</label>
+            <label className="label">Сума (грн)</label>
             <input
               type="number"
               className="input text-xl font-bold"
@@ -186,12 +186,12 @@ export default function AddExpense() {
             {saving ? (
               <>
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving…
+                Збереження…
               </>
             ) : (
               <>
                 <Save size={16} />
-                Save Expense
+                Зберегти витрату
               </>
             )}
           </button>

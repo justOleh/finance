@@ -27,6 +27,7 @@ def create_expense(db: Session, payload: ExpenseCreate) -> Expense:
         store=payload.store,
         total=payload.total,
         notes=payload.notes,
+        receipt_image_path=payload.receipt_image_path,
     )
     expense.items = payload.items
     db.add(expense)
@@ -46,6 +47,8 @@ def update_expense(db: Session, expense: Expense, payload: ExpenseUpdate) -> Exp
         expense.total = payload.total
     if payload.notes is not None:
         expense.notes = payload.notes
+    if payload.receipt_image_path is not None:
+        expense.receipt_image_path = payload.receipt_image_path
     db.commit()
     db.refresh(expense)
     return expense

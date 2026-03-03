@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 const BASE = import.meta.env.VITE_BACKEND_URL || ''
+const UPLOAD_TIMEOUT_MS = 120000
 
 const api = axios.create({
   baseURL: BASE,
@@ -25,5 +26,11 @@ export const deleteExpense = (id) =>
 export const uploadReceipt = (formData) =>
   api.post('/receipts/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 30000,
+    timeout: UPLOAD_TIMEOUT_MS,
+  }).then((r) => r.data)
+
+export const parseReceipt = (formData) =>
+  api.post('/receipts/parse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: UPLOAD_TIMEOUT_MS,
   }).then((r) => r.data)

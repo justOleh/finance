@@ -2,8 +2,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.expense import Expense
-from app.schemas import ExpenseResponse
+from app.schemas import ExpenseResponse, ReceiptDraftResponse
 from app.services import receipt_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -21,8 +24,7 @@ def _to_response(expense: Expense) -> ExpenseResponse:
     )
 
 
-@router.post("/upload", response_model=ExpenseResponse, status_code=201)
-def upload_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def _validate_and_prepare_upload(file: UploadFile):
     allowed_types = {"image/jpeg", "image/png", "image/jpg", "image/heic", "image/heif"}
     file_ext = ""
     if file.filename:
@@ -43,6 +45,32 @@ def upload_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Failed to process image: {exc}") from exc
 
     save_path = receipt_service.persist_receipt_file(filename, image_bytes)
+    return filename, content_type, image_bytes, save_path
+
+
+@router.post("/parse", response_model=ReceiptDraftResponse)
+def parse_receipt(file: UploadFile = File(...)):
+    filename, content_type, image_bytes, save_path = _validate_and_prepare_upload(file)
+
+    parsed: dict = {}
+    try:
+        parsed = receipt_service.parse_receipt_with_service(filename, image_bytes, content_type)
+    except Exception as e:
+        logger.exception("Failed to parse receipt: %s", e)
+
+    return ReceiptDraftResponse(
+        date=receipt_service.parse_expense_date(parsed.get("date")),
+        store=parsed.get("store", "Unknown"),
+        items=parsed.get("items", []),
+        total=float(parsed.get("total", 0.0)),
+        notes=str(parsed.get("raw_text", ""))[:500] if parsed.get("raw_text") else None,
+        receipt_image_path=save_path,
+    )
+
+
+@router.post("/upload", response_model=ExpenseResponse, status_code=201)
+def upload_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    filename, content_type, image_bytes, save_path = _validate_and_prepare_upload(file)
 
     parsed: dict = {}
     try:

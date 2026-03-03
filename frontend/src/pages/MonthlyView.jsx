@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
+import { uk } from 'date-fns/locale'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -8,9 +9,16 @@ import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { getExpenses, deleteExpense } from '../api'
 
 const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
+  'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень',
 ]
+
+const formatCurrencyUAH = (value) => new Intl.NumberFormat('uk-UA', {
+  style: 'currency',
+  currency: 'UAH',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(Number(value) || 0)
 
 export default function MonthlyView() {
   const now = new Date()
@@ -43,7 +51,7 @@ export default function MonthlyView() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this expense?')) return
+    if (!confirm('Видалити цю витрату?')) return
     setDeletingId(id)
     await deleteExpense(id).catch(console.error)
     setDeletingId(null)
@@ -63,7 +71,7 @@ export default function MonthlyView() {
   const dailyData = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, amount]) => ({
-      date: format(new Date(date), 'MMM d'),
+      date: format(new Date(date), 'd MMM', { locale: uk }),
       amount: +amount.toFixed(2),
     }))
 
@@ -82,9 +90,9 @@ export default function MonthlyView() {
       {/* Header with month navigation */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Monthly View</h1>
+          <h1 className="text-2xl font-bold text-white">Огляд за місяць</h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            Detailed breakdown by month
+            Детальна розбивка витрат за місяцем
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -109,16 +117,16 @@ export default function MonthlyView() {
           {/* ── Stat cards ─────────────────────────────────────────────── */}
           <div className="grid grid-cols-3 gap-4">
             <div className="stat-card">
-              <span className="stat-label">Total Spent</span>
-              <span className="stat-value text-brand-400">${total.toFixed(2)}</span>
+              <span className="stat-label">Витрачено всього</span>
+              <span className="stat-value text-brand-400">{formatCurrencyUAH(total)}</span>
             </div>
             <div className="stat-card">
-              <span className="stat-label">Transactions</span>
+              <span className="stat-label">Транзакції</span>
               <span className="stat-value">{expenses.length}</span>
             </div>
             <div className="stat-card">
-              <span className="stat-label">Avg per Transaction</span>
-              <span className="stat-value">${avg.toFixed(2)}</span>
+              <span className="stat-label">Середня транзакція</span>
+              <span className="stat-value">{formatCurrencyUAH(avg)}</span>
             </div>
           </div>
 
@@ -126,7 +134,7 @@ export default function MonthlyView() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             {/* Daily spending area chart */}
             <div className="card p-5 xl:col-span-2">
-              <h2 className="font-semibold text-white mb-4">Daily Spending</h2>
+              <h2 className="font-semibold text-white mb-4">Щоденні витрати</h2>
               {dailyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={dailyData}>
@@ -138,7 +146,7 @@ export default function MonthlyView() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                     <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(v) => `$${v}`} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={(v) => formatCurrencyUAH(v)} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip
                       contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }}
                       labelStyle={{ color: '#f1f5f9' }}
@@ -147,6 +155,7 @@ export default function MonthlyView() {
                     <Area
                       type="monotone"
                       dataKey="amount"
+                      name="Сума"
                       stroke="#6366f1"
                       strokeWidth={2}
                       fill="url(#colorAmt)"
@@ -155,21 +164,21 @@ export default function MonthlyView() {
                 </ResponsiveContainer>
               ) : (
                 <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
-                  No expenses this month
+                  Цього місяця витрат немає
                 </div>
               )}
             </div>
 
             {/* Top stores */}
             <div className="card p-5">
-              <h2 className="font-semibold text-white mb-4">Top Stores</h2>
+              <h2 className="font-semibold text-white mb-4">Топ магазинів</h2>
               {topStores.length > 0 ? (
                 <div className="space-y-3">
                   {topStores.map(([store, amount]) => (
                     <div key={store}>
                       <div className="flex justify-between text-sm mb-1">
                         <span className="text-slate-300 truncate max-w-[120px]">{store}</span>
-                        <span className="text-brand-400 font-medium">${amount.toFixed(2)}</span>
+                        <span className="text-brand-400 font-medium">{formatCurrencyUAH(amount)}</span>
                       </div>
                       <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                         <div
@@ -181,7 +190,7 @@ export default function MonthlyView() {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-500 text-sm">No data</p>
+                <p className="text-slate-500 text-sm">Немає даних</p>
               )}
             </div>
           </div>
@@ -190,24 +199,24 @@ export default function MonthlyView() {
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-800">
               <h2 className="font-semibold text-white">
-                All Expenses – {MONTH_NAMES[month - 1]} {year}
+                Усі витрати — {MONTH_NAMES[month - 1]} {year}
               </h2>
             </div>
             {expenses.length === 0 ? (
               <div className="py-16 text-center text-slate-500">
-                No expenses recorded for this month
+                За цей місяць витрат не зафіксовано
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800">
-                      <Th>Date</Th>
-                      <Th>Store</Th>
-                      <Th>Items</Th>
-                      <Th>Notes</Th>
-                      <Th align="right">Total</Th>
-                      <Th align="center">Actions</Th>
+                      <Th>Дата</Th>
+                      <Th>Магазин</Th>
+                      <Th>Позиції</Th>
+                      <Th>Нотатки</Th>
+                      <Th align="right">Сума</Th>
+                      <Th align="center">Дії</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -216,7 +225,7 @@ export default function MonthlyView() {
                         key={e.id}
                         className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
                       >
-                        <Td>{format(new Date(e.date), 'MMM d')}</Td>
+                        <Td>{format(new Date(e.date), 'd MMM', { locale: uk })}</Td>
                         <Td>
                           <span className="font-medium text-white">{e.store}</span>
                         </Td>
@@ -231,7 +240,7 @@ export default function MonthlyView() {
                           <span className="text-slate-500 text-xs">{e.notes || '—'}</span>
                         </Td>
                         <Td align="right">
-                          <span className="font-semibold text-brand-400">${e.total.toFixed(2)}</span>
+                          <span className="font-semibold text-brand-400">{formatCurrencyUAH(e.total)}</span>
                         </Td>
                         <Td align="center">
                           <button
