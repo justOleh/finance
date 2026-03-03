@@ -3,6 +3,20 @@ import { Upload, ImageIcon, CheckCircle2, XCircle } from 'lucide-react'
 import { uploadReceipt } from '../api'
 import { format } from 'date-fns'
 
+const toNumber = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+const formatDateSafe = (value) => {
+  if (!value) return '—'
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return '—'
+  return format(parsedDate, 'MMM d, yyyy')
+}
+
+const getItemAmount = (item) => toNumber(item?.price ?? item?.item_price)
+
 export default function UploadReceipt() {
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -150,8 +164,8 @@ export default function UploadReceipt() {
 
             <div className="grid grid-cols-2 gap-4 pt-2">
               <InfoField label="Store" value={result.store} />
-              <InfoField label="Total" value={`$${result.total.toFixed(2)}`} />
-              <InfoField label="Date" value={result.date ? format(new Date(result.date), 'MMM d, yyyy') : '—'} />
+              <InfoField label="Total" value={`$${toNumber(result.total).toFixed(2)}`} />
+              <InfoField label="Date" value={formatDateSafe(result.date)} />
               <InfoField label="Expense ID" value={`#${result.id}`} />
             </div>
 
@@ -171,7 +185,7 @@ export default function UploadReceipt() {
                         <tr key={i} className="border-b border-slate-700/50">
                           <td className="px-4 py-2 text-slate-300">{item.name}</td>
                           <td className="px-4 py-2 text-right text-brand-400 font-medium">
-                            ${item.price.toFixed(2)}
+                            ${getItemAmount(item).toFixed(2)}
                           </td>
                         </tr>
                       ))}

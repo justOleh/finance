@@ -21,7 +21,7 @@ Endpoints
 
 from fastapi import FastAPI
 
-from routers import extract
+from app.routers import extract
 
 app = FastAPI(
     title="Receipt Parser Service",

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, APIRouter
-from services.parser import parse_receipt_image
+from app.services.parser import parse_receipt_image
 
 
 router = APIRouter()

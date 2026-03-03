@@ -1,6 +1,4 @@
 
-version: "3.8"
-
 services:
   receipt-parser:
     build:
@@ -14,8 +12,8 @@ services:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
     volumes:
-      - ./app:/app
-      - ../data/receipts:/app/data/receipts
+      - ./app:/app/app
+      - ../data/receipts:/app/app/data/receipts
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
