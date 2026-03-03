@@ -9,7 +9,10 @@ from datetime import datetime
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("API_KEY"))
+
+def _get_openai_client() -> OpenAI:
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
+    return OpenAI(api_key=api_key)
 
 RECEIPT_PROMPT = """Extract structured data from this receipt image.
 Don't add any information that is not explicitly present in the image.
@@ -72,6 +75,7 @@ def _extract_items_from_raw_text(raw_text: str) -> list:
 
 def parse_receipt_image(image_bytes: bytes) -> dict:
     """Send receipt image to OpenAI and return structured data."""
+    client = _get_openai_client()
     # encode image as base64 data URL
     b64 = base64.b64encode(image_bytes).decode()
     data_url = f"data:image/jpeg;base64,{b64}"
@@ -105,5 +109,5 @@ def parse_receipt_image(image_bytes: bytes) -> dict:
         parsed["date"] = datetime.now().date().isoformat()  
 
     # return {"gpt_result": output_text, "gpt_json": parsed}
-    return {"gpt_json": parsed}
+    return parsed
 
