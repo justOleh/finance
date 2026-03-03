@@ -8,10 +8,10 @@ import {
 } from 'lucide-react'
 
 const links = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/monthly', icon: CalendarDays, label: 'Monthly' },
-  { to: '/add', icon: PlusCircle, label: 'Add Expense' },
-  { to: '/upload', icon: Camera, label: 'Upload Receipt' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Панель' },
+  { to: '/monthly', icon: CalendarDays, label: 'За місяцем' },
+  { to: '/add', icon: PlusCircle, label: 'Додати витрату' },
+  { to: '/upload', icon: Camera, label: 'Завантажити чек' },
 ]
 
 export default function Sidebar() {
@@ -22,7 +22,7 @@ export default function Sidebar() {
         <span className="text-2xl">💰</span>
         <div>
           <p className="text-white font-semibold text-sm leading-tight">My Finance</p>
-          <p className="text-slate-500 text-xs">Expense Tracker</p>
+          <p className="text-slate-500 text-xs">Облік витрат</p>
         </div>
       </div>
 
@@ -44,7 +44,7 @@ export default function Sidebar() {
       <div className="p-4 border-t border-slate-800">
         <div className="flex items-center gap-2 text-slate-500 text-xs">
           <TrendingUp size={14} />
-          <span>Track every dollar</span>
+          <span>Контролюй кожну гривню</span>
         </div>
       </div>
     </aside>

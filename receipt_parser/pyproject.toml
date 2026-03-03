@@ -13,6 +13,8 @@ dependencies = [
 	"python-multipart==0.0.22",
 	"qreader>=3.16.0",
 	"opencv-python-headless==4.9.0.80",
+	"pillow==12.1.1",
+	"pillow-heif==0.18.0",
 	"openai==2.24.0",
 	"python-dotenv>=1.0.1",
 ]

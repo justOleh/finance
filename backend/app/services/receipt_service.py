@@ -53,11 +53,10 @@ def parse_receipt_with_service(filename: str, image_bytes: bytes, content_type: 
     response = httpx.post(
         f"{settings.receipt_parser_url}/parse_receipt",
         files={"file": (filename, image_bytes, content_type)},
-        timeout=15.0,
+        timeout=120.0,
     )
     response.raise_for_status()
     return normalize_parser_payload(response.json())
-
 
 def parse_expense_date(raw_date: str | None):
     try:

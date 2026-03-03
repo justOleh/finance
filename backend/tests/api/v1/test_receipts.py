@@ -6,6 +6,47 @@ def test_upload_rejects_invalid_content_type(client):
     assert response.status_code == 400
 
 
+def test_parse_receipt_success_without_db_write(monkeypatch, client):
+    from app.api.v1 import receipts
+
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "prepare_receipt_image",
+        lambda filename, content_type, image_bytes: ("abc.jpg", "image/jpeg", image_bytes),
+    )
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "persist_receipt_file",
+        lambda filename, image_bytes: f"./data/receipts/{filename}",
+    )
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "parse_receipt_with_service",
+        lambda filename, image_bytes, content_type: {
+            "date": "2024-01-15",
+            "store": "Market",
+            "items": [{"name": "Apple", "price": 2.5}],
+            "total": 2.5,
+            "raw_text": "Market Apple",
+        },
+    )
+
+    parse_response = client.post(
+        "/receipts/parse",
+        files={"file": ("receipt.jpg", b"fake-jpeg", "image/jpeg")},
+    )
+
+    assert parse_response.status_code == 200
+    body = parse_response.json()
+    assert body["store"] == "Market"
+    assert body["total"] == 2.5
+    assert body["items"] == [{"name": "Apple", "price": 2.5}]
+
+    expenses_response = client.get("/expenses/")
+    assert expenses_response.status_code == 200
+    assert expenses_response.json() == []
+
+
 def test_upload_receipt_success_with_parser(monkeypatch, client):
     from app.api.v1 import receipts
 
@@ -34,6 +75,43 @@ def test_upload_receipt_success_with_parser(monkeypatch, client):
     response = client.post(
         "/receipts/upload",
         files={"file": ("receipt.jpg", b"fake-jpeg", "image/jpeg")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["store"] == "Market"
+    assert body["total"] == 2.5
+    assert body["items"] == [{"name": "Apple", "price": 2.5}]
+
+
+def test_upload_receipt_accepts_heic(monkeypatch, client):
+    from app.api.v1 import receipts
+
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "prepare_receipt_image",
+        lambda filename, content_type, image_bytes: ("abc.jpg", "image/jpeg", image_bytes),
+    )
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "persist_receipt_file",
+        lambda filename, image_bytes: f"./data/receipts/{filename}",
+    )
+    monkeypatch.setattr(
+        receipts.receipt_service,
+        "parse_receipt_with_service",
+        lambda filename, image_bytes, content_type: {
+            "date": "2024-01-15",
+            "store": "Market",
+            "items": [{"name": "Apple", "price": 2.5}],
+            "total": 2.5,
+            "raw_text": "Market Apple",
+        },
+    )
+
+    response = client.post(
+        "/receipts/upload",
+        files={"file": ("receipt.heic", b"fake-heic", "image/heic")},
     )
 
     assert response.status_code == 201
