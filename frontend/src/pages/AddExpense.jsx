@@ -71,7 +71,7 @@ export default function AddExpense() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Додати витрату</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Додати витрату</h1>
         <p className="text-slate-400 text-sm mt-0.5">Запишіть нову покупку або платіж</p>
       </div>
 
@@ -81,7 +81,7 @@ export default function AddExpense() {
           <h2 className="font-semibold text-white text-sm uppercase tracking-wider text-slate-400">
             Деталі
           </h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Дата</label>
               <input type="date" className="input" value={form.date} onChange={set('date')} required />
@@ -132,7 +132,7 @@ export default function AddExpense() {
                 />
                 <input
                   type="number"
-                  className="input w-28"
+                  className="input w-24 sm:w-28"
                   placeholder="Ціна"
                   min="0"
                   step="0.01"

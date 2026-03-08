@@ -365,7 +365,7 @@ export default function Dashboard() {
       {editing && (
         <div className="card p-5 space-y-4">
           <h2 className="font-semibold text-white">Редагувати витрату</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Дата</label>
               <input type="date" className="input" value={editing.date} onChange={setEditingField('date')} />
@@ -412,7 +412,7 @@ export default function Dashboard() {
                       type="number"
                       min="0"
                       step="0.01"
-                      className="input w-32"
+                      className="input w-24 sm:w-32"
                       placeholder="Ціна"
                       value={item.price}
                       onChange={setEditingItem(idx, 'price')}
@@ -457,7 +457,7 @@ function Header() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-2xl font-bold text-white">Панель</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Панель</h1>
         <p className="text-slate-400 text-sm mt-0.5">
           {format(now, 'EEEE, d MMMM yyyy', { locale: uk })}
         </p>
@@ -481,14 +481,14 @@ function StatCard({ icon, label, value, sub, accent, iconBg }) {
 
 function Th({ children, align = 'left' }) {
   return (
-    <th className={`px-5 py-3 text-xs font-medium text-slate-400 uppercase tracking-wider ${align === 'right' ? 'text-right' : 'text-left'}`}>
+    <th className={`px-3 sm:px-5 py-3 text-xs font-medium text-slate-400 uppercase tracking-wider whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'}`}>
       {children}
     </th>
   )
 }
 
 function Td({ children, align = 'left' }) {
-  return <td className={`px-5 py-3.5 text-slate-300 ${align === 'right' ? 'text-right' : 'text-left'}`}>{children}</td>
+  return <td className={`px-3 sm:px-5 py-3 text-slate-300 ${align === 'right' ? 'text-right' : 'text-left'}`}>{children}</td>
 }
 
 function LoadingState() {
