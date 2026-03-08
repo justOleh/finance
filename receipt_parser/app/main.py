@@ -19,7 +19,9 @@ Endpoints
 - ``POST /parse_receipt`` → parsed receipt JSON
 """
 
+
 from fastapi import FastAPI
+from transformers import pipeline
 
 from app.routers import extract
 
@@ -33,3 +35,14 @@ app = FastAPI(
 )
 
 app.include_router(extract.router)
+
+# Qwen model initialization on startup
+@app.on_event("startup")
+async def startup_event():
+    # Load Qwen pipeline and store in app state
+    app.state.qwen_pipe = pipeline(
+        "image-text-to-text",
+        model="./app/data/models/Qwen3.5-2B",
+        max_new_tokens=2048,
+        max_length=2048
+    )
