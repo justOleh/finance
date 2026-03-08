@@ -190,7 +190,7 @@ export default function UploadReceipt() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Завантажити чек</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Завантажити чек</h1>
         <p className="text-slate-400 text-sm mt-0.5">
           Завантажте фото, і ми автоматично витягнемо дані
         </p>
@@ -276,7 +276,7 @@ export default function UploadReceipt() {
               <p className="text-slate-400 text-sm">Дані буде збережено в базу тільки після натискання кнопки "Зберегти".</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Магазин</label>
                 <input className="input" value={draft.store} onChange={setDraftField('store')} />
@@ -330,7 +330,7 @@ export default function UploadReceipt() {
                         type="number"
                         min="0"
                         step="0.01"
-                        className="input w-32"
+                        className="input w-24 sm:w-32"
                         placeholder="Ціна"
                         value={item.price}
                         onChange={setDraftItem(idx, 'price')}

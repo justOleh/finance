@@ -88,9 +88,9 @@ export default function MonthlyView() {
   return (
     <div className="space-y-6">
       {/* Header with month navigation */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Огляд за місяць</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Огляд за місяць</h1>
           <p className="text-slate-400 text-sm mt-0.5">
             Детальна розбивка витрат за місяцем
           </p>
@@ -115,7 +115,7 @@ export default function MonthlyView() {
       ) : (
         <>
           {/* ── Stat cards ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="stat-card">
               <span className="stat-label">Витрачено всього</span>
               <span className="stat-value text-brand-400">{formatCurrencyUAH(total)}</span>
@@ -266,12 +266,12 @@ export default function MonthlyView() {
 
 function Th({ children, align = 'left' }) {
   return (
-    <th className={`px-5 py-3 text-xs font-medium text-slate-400 uppercase tracking-wider ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+    <th className={`px-3 sm:px-5 py-3 text-xs font-medium text-slate-400 uppercase tracking-wider whitespace-nowrap ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
       {children}
     </th>
   )
 }
 
 function Td({ children, align = 'left' }) {
-  return <td className={`px-5 py-3 text-slate-300 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>{children}</td>
+  return <td className={`px-3 sm:px-5 py-3 text-slate-300 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>{children}</td>
 }

@@ -5,10 +5,17 @@
 @layer base {
   body {
     @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior: none;
   }
 
   * {
     @apply border-slate-700;
+  }
+
+  /* Enable smooth scrolling with momentum on iOS */
+  html {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -25,22 +32,29 @@
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500
            text-white font-medium text-sm transition-all duration-150 shadow-lg shadow-brand-900/40
            disabled:opacity-50 disabled:cursor-not-allowed;
+    /* Touch-friendly tap target */
+    min-height: 44px;
   }
 
   .btn-secondary {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700
            text-slate-200 font-medium text-sm transition-all duration-150 border border-slate-700;
+    min-height: 44px;
   }
 
   .btn-danger {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-900/50 hover:bg-red-800/60
            text-red-300 font-medium text-sm transition-all duration-150 border border-red-800/50;
+    min-height: 44px;
   }
 
   .input {
     @apply w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100
            placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50
            focus:border-brand-500 transition-all duration-150;
+    /* Touch-friendly input height */
+    min-height: 44px;
+    font-size: 16px; /* Prevents iOS zoom on focus */
   }
 
   .label {
@@ -48,7 +62,7 @@
   }
 
   .stat-card {
-    @apply card p-5 flex flex-col gap-1;
+    @apply card p-4 sm:p-5 flex flex-col gap-1;
   }
 
   .stat-label {
@@ -56,7 +70,7 @@
   }
 
   .stat-value {
-    @apply text-2xl font-bold text-white;
+    @apply text-xl sm:text-2xl font-bold text-white;
   }
 
   .nav-item {
@@ -67,6 +81,11 @@
   .nav-item-active {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
            text-white bg-brand-600/20 border border-brand-500/30;
+  }
+
+  /* Safe area support for iPhone notch/home indicator */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
