@@ -1,0 +1,6 @@
+{
+    "inputs": "<|begin_of_sentence|><|User|>what is 10+1.<|Assistant|>",
+    "parameters": {
+        "max_new_tokens": 128
+    }
+}

@@ -5,6 +5,7 @@ import re
 import os
 from io import BytesIO
 from openai import OpenAI
+from fastapi import Request
 from dotenv import load_dotenv
 from datetime import datetime
 from PIL import Image
@@ -98,8 +99,34 @@ def prepare_parser_image(filename: str | None, content_type: str | None, image_b
     return output_filename, current_type, image_bytes
 
 
-def parse_receipt_image(image_bytes: bytes, content_type: str = "image/jpeg") -> dict:
+def parse_receipt_image(image_bytes: bytes, content_type: str = "image/jpeg", request: Request = None) -> dict:
     """Send receipt image to OpenAI and return structured data."""
+    # If request and Qwen pipeline available, use Qwen
+    if request is not None and hasattr(request.app.state, "qwen_pipe"):
+        pipe = request.app.state.qwen_pipe
+        # Qwen expects a specific message format, so adapt image_bytes accordingly
+        # Save image_bytes to a temp file for Qwen pipeline
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp.write(image_bytes)
+            tmp_path = tmp.name
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "url": tmp_path},
+                    {"type": "text", "text": RECEIPT_PROMPT}
+                ]
+            },
+        ]
+        extraction_output = pipe(text=messages)
+        assistant_content = extraction_output[0]['generated_text'][1]['content']
+        try:
+            parsed = json.loads(assistant_content)
+        except Exception:
+            parsed = None
+        return parsed
+    # Default: OpenAI fallback
     client = _get_openai_client()
     # encode image as base64 data URL
     b64 = base64.b64encode(image_bytes).decode()

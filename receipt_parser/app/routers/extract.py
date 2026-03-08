@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, APIRouter
+from fastapi import FastAPI, UploadFile, File, HTTPException, APIRouter, Request
 from pathlib import Path
 from app.services.parser import parse_receipt_image, prepare_parser_image
 
@@ -13,7 +13,7 @@ def health_check():
 
 
 @router.post("/parse_receipt", summary="Parse a receipt image")
-def parse_receipt(file: UploadFile = File(...)):
+def parse_receipt(request: Request, file: UploadFile = File(...)):
     """Accept a JPEG, PNG, HEIC or HEIF receipt image and return structured data.
 
     Returns a JSON object with keys:
@@ -36,5 +36,5 @@ def parse_receipt(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to process image: {exc}") from exc
 
-    receipt_extraction = parse_receipt_image(prepared_bytes, content_type=prepared_type)
+    receipt_extraction = parse_receipt_image(prepared_bytes, content_type=prepared_type, request=request)
     return receipt_extraction

@@ -7,7 +7,7 @@ services:
     image: my-finance-receipt-parser:latest
     container_name: receipt-parser
     ports:
-      - "8001:8001"
+      - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
@@ -16,7 +16,7 @@ services:
       - ../data/receipts:/app/app/data/receipts
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
