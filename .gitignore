@@ -220,3 +220,5 @@ __marimo__/
 *.jpg
 .DS_Store
 data
+
+receipt_parser/models/
