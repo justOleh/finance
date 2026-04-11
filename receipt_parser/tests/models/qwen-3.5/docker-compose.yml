@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  qwen-receipt-parser:
+    build: .
+    container_name: qwen-receipt-parser
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Uncomment if your app needs to run a server on port 8000
+    # command: ["python", "main.py"]
