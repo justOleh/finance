@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Tests carry duplicate model snapshots (hundreds of MB)
+tests/
+.pytest_cache/
+
+# Runtime artifacts
+app/data/receipts/
+
+# Model weights — huge, mounted from host at runtime instead
+app/data/models/
+
+# Nested compose (for isolated parser dev), not needed in build context
+docker-compose.yml
+
+# VCS / editor
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore

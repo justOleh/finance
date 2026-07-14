@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Tests / dev
+tests/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data is mounted from host at runtime via docker-compose
+data/
+
+# VCS / editor
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore
