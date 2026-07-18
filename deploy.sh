@@ -18,6 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+ENVS_DIR="${SCRIPT_DIR}/envs"
 
 ENV_NAME=""
 ACTION="up"
@@ -82,18 +83,45 @@ deploy_local() {
         exit 1
     fi
 
+    local env_file="${ENVS_DIR}/local.env"
+    if [[ ! -f "$env_file" ]]; then
+        echo "Error: env file not found at $env_file" >&2
+        exit 1
+    fi
+
+    # --env-file makes ${VAR} in docker-compose.yml resolve against local.env.
+    # (Per-service `env_file:` blocks in the compose file additionally inject
+    #  the same vars into each container's runtime environment.)
+    local -a compose_cmd=("${COMPOSE[@]}" --env-file "$env_file" -f "$COMPOSE_FILE")
+
+    # Also load the vars into this shell so the echo below can use them.
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+
+    # Required vars — fail loudly if the env file is missing any of these
+    # rather than silently falling back to hardcoded ports.
+    local var
+    for var in BACKEND_PORT RECEIPT_PARSER_PORT FRONTEND_PORT; do
+        if [[ -z "${!var:-}" ]]; then
+            echo "Error: $var is not set in $env_file" >&2
+            exit 1
+        fi
+    done
+
     case "$ACTION" in
         up)
             echo ">> Building and starting local containers via docker compose..."
-            "${COMPOSE[@]}" -f "$COMPOSE_FILE" up --build -d
+            "${compose_cmd[@]}" up --build -d
             echo ">> Services:"
-            "${COMPOSE[@]}" -f "$COMPOSE_FILE" ps
+            "${compose_cmd[@]}" ps
             cat <<EOF
 
 Local stack is up:
-  frontend        http://localhost:8501
-  backend API     http://localhost:8000
-  receipt parser  http://localhost:8001
+  frontend        http://localhost:${FRONTEND_PORT}
+  backend API     http://localhost:${BACKEND_PORT}
+  receipt parser  http://localhost:${RECEIPT_PARSER_PORT}
 
 Tail logs:  ./$(basename "$0") --env local --logs
 Stop:       ./$(basename "$0") --env local --down
@@ -101,10 +129,10 @@ EOF
             ;;
         down)
             echo ">> Stopping local containers..."
-            "${COMPOSE[@]}" -f "$COMPOSE_FILE" down
+            "${compose_cmd[@]}" down
             ;;
         logs)
-            "${COMPOSE[@]}" -f "$COMPOSE_FILE" logs -f
+            "${compose_cmd[@]}" logs -f
             ;;
     esac
 }
