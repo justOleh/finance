@@ -1,23 +1,33 @@
 services:
   backend:
     build: ./backend
+    env_file:
+      - ./envs/local.env
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
     volumes:
       - ./data:/app/data
-    environment:
-      - RECEIPT_PARSER_URL=http://receipt_parser:8001
     depends_on:
       - receipt_parser
 
   receipt_parser:
     build: ./receipt_parser
+    env_file:
+      - ./envs/local.env
     ports:
-      - "8001:8001"
+      - "${RECEIPT_PARSER_PORT}:${RECEIPT_PARSER_PORT}"
+    volumes:
+      # Model weights are excluded from the image (see receipt_parser/.dockerignore)
+      # and mounted from the host at the path expected by app/main.py.
+      - ./receipt_parser/app/data/models:/app/app/data/models:ro
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Vite bakes VITE_* vars into the bundle at build time.
+        VITE_BACKEND_URL: "${VITE_BACKEND_URL-}"
     ports:
-      - "8501:80"
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
     depends_on:
       - backend
