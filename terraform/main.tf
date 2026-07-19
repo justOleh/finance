@@ -65,3 +65,32 @@ module "tflock_table" {
 
   tags = local.common_tags
 }
+
+module "frontend_bucket" {
+  source = "./storage/s3"
+
+  buckets = {
+    app = {
+      name              = "${local.name_prefix}-frontend"
+      versioning        = true
+      website_hosting   = true
+      index_document    = "index.html"
+      error_document    = "index.html"
+      block_public      = false
+    }
+  }
+
+  tags = local.common_tags
+}
+
+# ---------- Outputs ----------
+
+output "frontend_bucket_id" {
+  description = "Frontend S3 bucket ID"
+  value       = module.frontend_bucket.bucket_ids["app"]
+}
+
+output "frontend_bucket_endpoint" {
+  description = "Frontend S3 bucket website endpoint"
+  value       = module.frontend_bucket.bucket_endpoints["app"]
+}

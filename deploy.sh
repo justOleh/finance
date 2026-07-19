@@ -137,16 +137,136 @@ EOF
     esac
 }
 
+deploy_aws_frontend() {
+    local frontend_dir="${SCRIPT_DIR}/frontend"
+    
+    if [[ ! -d "$frontend_dir" ]]; then
+        echo "Error: frontend directory not found at $frontend_dir" >&2
+        exit 1
+    fi
+
+    echo ">> Building frontend..."
+    cd "$frontend_dir"
+    
+    if [[ ! -f "package.json" ]]; then
+        echo "Error: package.json not found in $frontend_dir" >&2
+        exit 1
+    fi
+
+    npm install
+    npm run build
+    
+    if [[ ! -d "dist" ]]; then
+        echo "Error: dist directory not created after build" >&2
+        exit 1
+    fi
+    
+    echo "✓ Frontend build successful"
+    
+    echo ">> Getting S3 bucket name from terraform outputs..."
+    local terraform_dir="${SCRIPT_DIR}/terraform"
+    cd "$terraform_dir"
+    
+    local bucket_id
+    bucket_id=$(terraform output -raw 'frontend_bucket_id' 2>/dev/null || echo "")
+    
+    if [[ -z "$bucket_id" ]]; then
+        echo "Error: could not get frontend bucket name from terraform" >&2
+        exit 1
+    fi
+    
+    echo ">> Uploading frontend to S3 bucket: $bucket_id"
+    
+    # Upload dist files to S3 (bucket policy allows public read)
+    aws s3 sync "$frontend_dir/dist" "s3://$bucket_id/" \
+        --delete \
+        --cache-control "public, max-age=3600" \
+        --exclude ".git/*"
+    
+    echo "✓ Frontend deployed to S3"
+    cd - > /dev/null
+}
+
+deploy_aws_infra() {
+    local terraform_dir="${SCRIPT_DIR}/terraform"
+    
+    if [[ ! -d "$terraform_dir" ]]; then
+        echo "Error: terraform directory not found at $terraform_dir" >&2
+        exit 1
+    fi
+
+    echo ">> Initializing terraform..."
+    cd "$terraform_dir"
+    
+    if ! terraform init; then
+        echo "Error: terraform init failed" >&2
+        exit 1
+    fi
+
+    echo ">> Checking AWS infrastructure with terraform plan..."
+    
+    # Run terraform plan and capture output
+    if ! terraform plan -out=tfplan; then
+        echo "Error: terraform plan failed" >&2
+        exit 1
+    fi
+    
+    # Check if there are any changes
+    if terraform show tfplan | grep -q "No changes"; then
+        echo "✓ AWS infrastructure is up to date. No changes needed."
+    else
+        echo ""
+        echo "⚠️  AWS infrastructure changes detected:"
+        terraform show tfplan
+        echo ""
+        echo "To proceed with these infrastructure changes, type: CHANGE_INFRA"
+        read -p "Confirm: " -r confirmation
+        
+        if [[ "$confirmation" != "CHANGE_INFRA" ]]; then
+            echo "Deployment cancelled."
+            rm -f tfplan
+            exit 0
+        fi
+        
+        echo ">> Applying terraform changes..."
+        terraform apply tfplan
+        rm -f tfplan
+        echo "✓ AWS infrastructure updated successfully."
+    fi
+    
+    cd - > /dev/null
+}
+
+deploy_aws() {
+    echo "=========================================="
+    echo "  AWS Deployment - Frontend & Infrastructure"
+    echo "=========================================="
+    echo ""
+    
+    # Stage 1: Infrastructure
+    echo "[Stage 1/2] Infrastructure"
+    deploy_aws_infra
+    echo ""
+    
+    # Stage 2: Frontend
+    echo "[Stage 2/2] Frontend"
+    deploy_aws_frontend
+    echo ""
+    
+    echo "=========================================="
+    echo "✓ AWS deployment completed successfully!"
+    echo "=========================================="
+}
+
 case "$ENV_NAME" in
     local)
         deploy_local
         ;;
     prod|aws)
-        echo "Error: '$ENV_NAME' deployment is not implemented yet." >&2
-        exit 2
+        deploy_aws
         ;;
     *)
-        echo "Error: unknown env '$ENV_NAME' (expected: local)" >&2
+        echo "Error: unknown env '$ENV_NAME' (expected: local or aws)" >&2
         exit 1
         ;;
 esac

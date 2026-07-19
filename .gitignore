@@ -227,3 +227,4 @@ receipt_parser/tests/models/qwen-3.5/Qwen3.5-2B
 # terraform 
 .terraform/
 .terraform.lock.hcl
+terraform/tfplan
