@@ -8,12 +8,8 @@ terraform {
     }
   }
 
-  backend "s3" {
-    bucket         = "finance-prod-675129110096-tfstate"
-    key            = "global/terraform.tfstate"
-    region         = "eu-west-1"
-    dynamodb_table = "finance-prod-675129110096-tflock"
-    encrypt        = true
+  backend "local" {
+    path = "terraform.tfstate"
   }
 }
 
@@ -35,36 +31,6 @@ locals {
   }
 }
 
-# ---------- Remote state storage ----------
-
-module "tfstate_bucket" {
-  source = "./storage/s3"
-
-  buckets = {
-    tfstate = {
-      name       = local.state_bucket
-      versioning = true
-    }
-  }
-
-  tags = local.common_tags
-}
-
-module "tflock_table" {
-  source = "./storage/dynamodb"
-
-  tables = {
-    tflock = {
-      name     = local.lock_table
-      hash_key = "LockID"
-      attributes = [
-        { name = "LockID", type = "S" }
-      ]
-    }
-  }
-
-  tags = local.common_tags
-}
 
 module "frontend_bucket" {
   source = "./storage/s3"
