@@ -6,7 +6,7 @@
 #   ./deploy.sh --env local --down       # stop and remove containers
 #   ./deploy.sh --env local --logs       # follow container logs
 #
-# AWS (not implemented yet):
+# AWS (--env prod):
 #   Frontend  -> npm build + terragrunt apply (uploads dist/ as aws_s3_object)
 #   Backend   -> docker build + push to ECR + ECS force-new-deployment
 #   Parser    -> docker build + push to ECR + ECS force-new-deployment
@@ -153,8 +153,16 @@ deploy_aws_frontend() {
         exit 1
     fi
 
+    local backend_url
+    backend_url=$(terraform -chdir="${SCRIPT_DIR}/terraform" output -raw backend_url 2>/dev/null || echo "")
+    if [[ -z "$backend_url" ]]; then
+        echo "Error: backend_url not available from terraform (apply infra first)" >&2
+        exit 1
+    fi
+    echo ">> Building with VITE_BACKEND_URL=$backend_url"
+
     npm install
-    npm run build
+    VITE_BACKEND_URL="$backend_url" npm run build
     
     if [[ ! -d "dist" ]]; then
         echo "Error: dist directory not created after build" >&2
@@ -237,19 +245,80 @@ deploy_aws_infra() {
     cd - > /dev/null
 }
 
+# Build + push an image to ECR and roll the ECS service.
+# Args: <label> <source_dir> <terraform output prefix>
+# Reads terraform outputs <prefix>_ecr_repository_url, <prefix>_cluster_name, <prefix>_service_name.
+deploy_aws_ecs_service() {
+    local label="$1" src_dir="$2" prefix="$3"
+    local terraform_dir="${SCRIPT_DIR}/terraform"
+    local tag="${IMAGE_TAG:-$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)}"
+
+    if [[ ! -d "$src_dir" ]]; then
+        echo "Error: $label directory not found at $src_dir" >&2
+        exit 1
+    fi
+
+    local repo_url cluster service region
+    repo_url=$(terraform -chdir="$terraform_dir" output -raw "${prefix}_ecr_repository_url" 2>/dev/null || echo "")
+    cluster=$(terraform -chdir="$terraform_dir" output -raw "${prefix}_cluster_name" 2>/dev/null || echo "")
+    service=$(terraform -chdir="$terraform_dir" output -raw "${prefix}_service_name" 2>/dev/null || echo "")
+    region="${AWS_REGION:-$(terraform -chdir="$terraform_dir" console <<< 'var.aws_region' 2>/dev/null | tr -d '"')}"
+
+    if [[ -z "$repo_url" || -z "$cluster" || -z "$service" ]]; then
+        echo "Error: ${prefix}_* outputs missing from terraform (run the infra stage first)" >&2
+        exit 1
+    fi
+
+    echo ">> Logging in to ECR (${repo_url%%/*})..."
+    aws ecr get-login-password --region "$region" \
+        | docker login --username AWS --password-stdin "${repo_url%%/*}"
+
+    echo ">> Building $label image (linux/amd64) tag=$tag..."
+    docker build --platform linux/amd64 -t "${repo_url}:${tag}" -t "${repo_url}:latest" "$src_dir"
+
+    echo ">> Pushing $label image..."
+    docker push "${repo_url}:${tag}"
+    docker push "${repo_url}:latest"
+
+    echo ">> Forcing new ECS deployment..."
+    aws ecs update-service --region "$region" --cluster "$cluster" --service "$service" \
+        --force-new-deployment >/dev/null
+    aws ecs wait services-stable --region "$region" --cluster "$cluster" --services "$service"
+
+    echo "✓ $label deployed to ECS ($service)"
+}
+
+deploy_aws_backend() {
+    deploy_aws_ecs_service "Backend" "${SCRIPT_DIR}/backend" backend
+}
+
+deploy_aws_parser() {
+    deploy_aws_ecs_service "Receipt parser" "${SCRIPT_DIR}/receipt_parser" parser
+}
+
 deploy_aws() {
     echo "=========================================="
-    echo "  AWS Deployment - Frontend & Infrastructure"
+    echo "  AWS Deployment - Infrastructure, Backend, Parser & Frontend"
     echo "=========================================="
     echo ""
     
     # Stage 1: Infrastructure
-    echo "[Stage 1/2] Infrastructure"
+    echo "[Stage 1/4] Infrastructure"
     deploy_aws_infra
     echo ""
     
-    # Stage 2: Frontend
-    echo "[Stage 2/2] Frontend"
+    # Stage 2: Backend
+    echo "[Stage 2/4] Backend (ECR + ECS)"
+    deploy_aws_backend
+    echo ""
+
+    # Stage 3: Receipt parser
+    echo "[Stage 3/4] Receipt parser (ECR + ECS)"
+    deploy_aws_parser
+    echo ""
+
+    # Stage 4: Frontend
+    echo "[Stage 4/4] Frontend"
     deploy_aws_frontend
     echo ""
     

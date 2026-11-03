@@ -2,8 +2,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.session import engine
-from app.models import Base
+from app.core.config import settings
+from app.db.session import ensure_table
 from app.api.v1.expenses import router as expenses_router
 from app.api.v1.receipts import router as receipts_router
 
@@ -11,7 +11,8 @@ from app.api.v1.receipts import router as receipts_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Path("./data/receipts").mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
+    if settings.dynamodb_endpoint_url:  # DynamoDB Local: no Terraform to create the table
+        ensure_table()
     yield
 
 

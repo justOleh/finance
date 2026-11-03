@@ -21,3 +21,21 @@ variable "env" {
   type        = string
   default     = "prod"
 }
+
+variable "force_destroy_buckets" {
+  description = "If true, S3 buckets are deleted together with all objects and versions on destroy."
+  type        = bool
+  default     = false
+}
+
+variable "parser_cpu" {
+  description = "Fargate CPU units for the receipt parser (model inference needs more than the default)."
+  type        = number
+  default     = 2048
+}
+
+variable "parser_memory" {
+  description = "Fargate memory (MiB) for the receipt parser."
+  type        = number
+  default     = 8192
+}

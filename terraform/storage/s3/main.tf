@@ -27,13 +27,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 }
 
 resource "aws_s3_bucket_public_access_block" "this" {
-  for_each = { for k, v in var.buckets : k => v if v.block_public }
+  for_each = var.buckets
 
+  # New buckets have Block Public Access enabled by default, so it must be
+  # explicitly disabled (not just omitted) for buckets that serve public content.
   bucket                  = aws_s3_bucket.this[each.key].id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  block_public_acls       = each.value.block_public
+  block_public_policy     = each.value.block_public
+  ignore_public_acls      = each.value.block_public
+  restrict_public_buckets = each.value.block_public
 }
 
 resource "aws_s3_bucket_website_configuration" "this" {
@@ -62,11 +64,11 @@ resource "aws_s3_bucket_policy" "public_read" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "PublicReadGetObject"
-        Effect = "Allow"
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
         Principal = "*"
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.this[each.key].arn}/*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.this[each.key].arn}/*"
       }
     ]
   })

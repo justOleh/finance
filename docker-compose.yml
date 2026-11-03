@@ -1,4 +1,8 @@
 services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+
   backend:
     build: ./backend
     env_file:
@@ -9,6 +13,7 @@ services:
       - ./data:/app/data
     depends_on:
       - receipt_parser
+      - dynamodb
 
   receipt_parser:
     build: ./receipt_parser

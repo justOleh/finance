@@ -1,40 +1,39 @@
+import os
+
+# Fake credentials so boto3 never touches a real account; must be set before imports.
+os.environ.update(
+    AWS_ACCESS_KEY_ID="testing",
+    AWS_SECRET_ACCESS_KEY="testing",
+    AWS_SESSION_TOKEN="testing",
+    AWS_REGION="eu-west-1",
+    DYNAMODB_TABLE="expenses-test",
+)
+os.environ.pop("DYNAMODB_ENDPOINT_URL", None)
+
+import boto3
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from moto import mock_aws
 
-from app.db.session import Base, get_db
+from app.db.session import get_table
 from app.main import app
-
-TEST_DATABASE_URL = "sqlite:///:memory:"
-
-engine_test = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine_test)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine_test)
-    yield
-    Base.metadata.drop_all(bind=engine_test)
+def dynamodb():
+    with mock_aws():
+        get_table.cache_clear()
+        boto3.client("dynamodb", region_name="eu-west-1").create_table(
+            TableName="expenses-test",
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield
+        get_table.cache_clear()
 
 
 @pytest.fixture
-def client(setup_db):
-    app.dependency_overrides[get_db] = override_get_db
+def client(dynamodb):
     with TestClient(app) as c:
         yield c
-    app.dependency_overrides.clear()
