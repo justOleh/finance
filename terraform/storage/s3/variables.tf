@@ -5,6 +5,10 @@ variable "buckets" {
     versioning    = optional(bool, false)
     force_destroy = optional(bool, false)
     sse_algorithm = optional(string, "AES256")
+    website_hosting = optional(bool, false)
+    index_document  = string
+    error_document  = string
+    block_public    = optional(bool, true)
   }))
 }
 
