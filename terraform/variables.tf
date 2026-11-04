@@ -21,3 +21,9 @@ variable "env" {
   type        = string
   default     = "prod"
 }
+
+variable "force_destroy_buckets" {
+  description = "If true, S3 buckets are deleted together with all objects and versions on destroy."
+  type        = bool
+  default     = false
+}
