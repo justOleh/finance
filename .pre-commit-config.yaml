@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-fix
+        name: ruff check --fix + format
+        entry: scripts/ruff-fix.sh
+        language: system
+        files: ^backend/.*\.py$
