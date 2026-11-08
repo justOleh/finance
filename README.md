@@ -6,6 +6,25 @@ Personal expense tracker with three services:
 - **receipt_parser** — FastAPI + local Qwen model that extracts data from receipt images (`receipt_parser/`)
 - **frontend** — Vite/React SPA served by nginx (`frontend/`)
 
+## Development setup
+
+Requires [uv](https://docs.astral.sh/uv/).
+
+```bash
+# Backend dependencies (including dev tools: pytest, moto, ruff)
+cd backend && uv sync --extra dev && cd ..
+
+# Git hooks: runs ruff (lint + format) on backend/*.py before each commit
+uv tool install pre-commit
+pre-commit install
+```
+
+`pre-commit install` registers `.git/hooks/pre-commit` for this clone only, so
+repeat it on every fresh clone. The hook calls `scripts/ruff-fix.sh`; run
+`scripts/ruff-fix.sh` (or `pre-commit run --all-files`) to check the whole
+backend manually. If the hook modifies files, the commit is aborted: re-stage
+and commit again.
+
 ## Deployment (`deploy.sh`)
 
 `deploy.sh` is the single entry point for building and running the stack. It
