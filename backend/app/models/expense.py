@@ -1,11 +1,13 @@
 import json
-from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Date, Text, DateTime
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, Date, DateTime, Float, Integer, String, Text
+
 from app.db.session import Base
 
 
 def _utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Expense(Base):

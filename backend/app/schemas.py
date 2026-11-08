@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -15,17 +15,17 @@ class ExpenseCreate(BaseModel):
     store: str
     items: list[dict]
     total: float
-    notes: Optional[str] = None
-    receipt_image_path: Optional[str] = None
+    notes: str | None = None
+    receipt_image_path: str | None = None
 
 
 class ExpenseUpdate(BaseModel):
-    date: Optional[dt.date] = None
-    store: Optional[str] = None
-    items: Optional[list[dict]] = None
-    total: Optional[float] = None
-    notes: Optional[str] = None
-    receipt_image_path: Optional[str] = None
+    date: dt.date | None = None
+    store: str | None = None
+    items: list[dict] | None = None
+    total: float | None = None
+    notes: str | None = None
+    receipt_image_path: str | None = None
 
 
 class ExpenseResponse(BaseModel):
@@ -36,8 +36,8 @@ class ExpenseResponse(BaseModel):
     store: str
     items: list[dict]
     total: float
-    receipt_image_path: Optional[str] = None
-    notes: Optional[str] = None
+    receipt_image_path: str | None = None
+    notes: str | None = None
     created_at: dt.datetime
 
 
@@ -46,5 +46,5 @@ class ReceiptDraftResponse(BaseModel):
     store: str
     items: list[dict]
     total: float
-    notes: Optional[str] = None
-    receipt_image_path: Optional[str] = None
+    notes: str | None = None
+    receipt_image_path: str | None = None

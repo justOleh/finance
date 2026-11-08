@@ -42,7 +42,10 @@ def test_update_and_delete_expense(client):
 
 def test_filter_and_monthly_summary(client):
     client.post("/expenses/", json=SAMPLE_EXPENSE)
-    client.post("/expenses/", json={**SAMPLE_EXPENSE, "store": "Other Shop", "date": "2024-02-20", "total": 5.00})
+    client.post(
+        "/expenses/",
+        json={**SAMPLE_EXPENSE, "store": "Other Shop", "date": "2024-02-20", "total": 5.00},
+    )
 
     filtered = client.get("/expenses/?store=Super")
     assert filtered.status_code == 200

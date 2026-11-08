@@ -1,10 +1,11 @@
 from datetime import date
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
 from app.db.session import get_db
 from app.models.expense import Expense
-from app.schemas import ExpenseCreate, ExpenseUpdate, ExpenseResponse, MonthlySummary
+from app.schemas import ExpenseCreate, ExpenseResponse, ExpenseUpdate, MonthlySummary
 from app.services import expense_service
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -30,9 +31,9 @@ def monthly_summary(db: Session = Depends(get_db)):
 
 @router.get("/", response_model=list[ExpenseResponse])
 def list_expenses(
-    start_date: Optional[date] = Query(None),
-    end_date: Optional[date] = Query(None),
-    store: Optional[str] = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    store: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     expenses = expense_service.list_expenses(db, start_date, end_date, store)

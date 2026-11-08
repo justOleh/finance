@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.session import engine
-from app.models import Base
+
 from app.api.v1.expenses import router as expenses_router
 from app.api.v1.receipts import router as receipts_router
+from app.db.session import engine
+from app.models import Base
 
 
 @asynccontextmanager

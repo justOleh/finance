@@ -1,10 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+
 from app.db.session import get_db
 from app.models.expense import Expense
 from app.schemas import ExpenseResponse, ReceiptDraftResponse
 from app.services import receipt_service
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +31,19 @@ def _validate_and_prepare_upload(file: UploadFile):
     file_ext = ""
     if file.filename:
         import pathlib
+
         file_ext = pathlib.Path(file.filename).suffix.lower()
 
-    if file.content_type not in allowed_types and file_ext not in {".heic", ".heif", ".jpg", ".jpeg", ".png"}:
-        raise HTTPException(status_code=400, detail="Only JPEG, PNG, HEIC and HEIF images are supported")
+    if file.content_type not in allowed_types and file_ext not in {
+        ".heic",
+        ".heif",
+        ".jpg",
+        ".jpeg",
+        ".png",
+    }:
+        raise HTTPException(
+            status_code=400, detail="Only JPEG, PNG, HEIC and HEIF images are supported"
+        )
 
     original_bytes = file.file.read()
     try:

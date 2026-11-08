@@ -1,10 +1,12 @@
 import uuid
-from io import BytesIO
 from datetime import date as date_type
+from io import BytesIO
 from pathlib import Path
+
 import httpx
 from PIL import Image
 from pillow_heif import register_heif_opener
+
 from app.core.config import settings
 
 register_heif_opener()
@@ -27,7 +29,9 @@ def convert_heic_to_jpeg(image_bytes: bytes) -> bytes:
         return output.getvalue()
 
 
-def prepare_receipt_image(filename: str | None, content_type: str | None, image_bytes: bytes) -> tuple[str, str, bytes]:
+def prepare_receipt_image(
+    filename: str | None, content_type: str | None, image_bytes: bytes
+) -> tuple[str, str, bytes]:
     file_ext = Path(filename).suffix.lower() if filename else ""
     current_type = content_type or "application/octet-stream"
 
@@ -57,6 +61,7 @@ def parse_receipt_with_service(filename: str, image_bytes: bytes, content_type: 
     )
     response.raise_for_status()
     return normalize_parser_payload(response.json())
+
 
 def parse_expense_date(raw_date: str | None):
     try:
