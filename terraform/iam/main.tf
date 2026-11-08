@@ -12,6 +12,17 @@ data "aws_iam_policy_document" "backend_assume" {
       identifiers = var.local_dev_principal_arns
     }
   }
+
+  # ECS tasks assume this role automatically; boto3 picks the credentials up.
+  statement {
+    sid     = "EcsTaskAssumeRole"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_role" "backend" {

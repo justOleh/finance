@@ -6,9 +6,11 @@
 #   ./deploy.sh --env local --down       # stop and remove containers
 #   ./deploy.sh --env local --logs       # follow container logs
 #
-# AWS (not implemented yet):
-#   Frontend  -> npm build + terragrunt apply (uploads dist/ as aws_s3_object)
+# AWS (cheap mode: Fargate task with public IP, no ALB; API restricted to your IP):
+#   Registry  -> terraform apply -target=module.ecr (ECR outlives --down)
+#   Infra     -> terraform apply (S3, DynamoDB, IAM, ECS)
 #   Backend   -> docker build + push to ECR + ECS force-new-deployment
+#   Frontend  -> npm build with VITE_BACKEND_URL=<task public IP> + s3 sync
 #   Parser    -> docker build + push to ECR + ECS force-new-deployment
 #
 # Env overrides (all optional):
@@ -143,27 +145,97 @@ fi
 # }
 
 deploy_aws() {
-    deploy_frontend() {
-        echo ">> Deploying frontend to AWS S3..."
-        echo ">> Creating S3 bucket (if not exists)..."
-        cd "${SCRIPT_DIR}/terraform"
-        terraform init
-        terraform apply -target=module.frontend_bucket -var force_destroy_buckets=true -auto-approve
+    local region="${AWS_REGION:-eu-west-1}"
+    local tf_dir="${SCRIPT_DIR}/terraform"
+    export AWS_REGION="$region" AWS_DEFAULT_REGION="$region"
 
-        echo ">> Building frontend..."
-        cd "${SCRIPT_DIR}/frontend"
-        npm install
-        npm run build
+    # The API has no auth yet: only your current public IP may reach it.
+    local my_cidr
+    my_cidr="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32"
+    echo ">> Backend will only accept connections from ${my_cidr}"
 
-        echo ">> Uploading frontend build to S3..."
-        local bucket
-        bucket="$(terraform -chdir="${SCRIPT_DIR}/terraform" output -raw frontend_bucket)"
-        aws s3 sync "${SCRIPT_DIR}/frontend/dist" "s3://${bucket}" --delete
+    tf_output() { terraform -chdir="$tf_dir" output -raw "$1"; }
+
+    # 1. Registry first, so the image exists before the ECS service is created.
+    deploy_registry() {
+        echo ">> Creating ECR repositories..."
+        terraform -chdir="$tf_dir" init
+        terraform -chdir="$tf_dir" apply -auto-approve -target=module.ecr \
+            -var "backend_allowed_cidr=${my_cidr}"
     }
 
+    # 2. Build + push the backend image.
+    push_backend_image() {
+        echo ">> Building and pushing backend image..."
+        local repo registry
+        repo="$(tf_output backend_ecr_repository_url)"
+        registry="${repo%%/*}"
+
+        aws ecr get-login-password --region "$region" \
+            | docker login --username AWS --password-stdin "$registry"
+
+        # Fargate task runs on ARM64 (see terraform/ecs), same as Apple Silicon.
+        docker build --platform linux/arm64 -t "${repo}:latest" "${SCRIPT_DIR}/backend"
+        docker push "${repo}:latest"
+    }
+
+    # 3. Everything else (frontend bucket, DynamoDB, IAM, ECS).
+    deploy_infra() {
+        echo ">> Applying Terraform (frontend bucket, DynamoDB, IAM, ECS)..."
+        terraform -chdir="$tf_dir" apply -auto-approve \
+            -var force_destroy_buckets=true \
+            -var "backend_allowed_cidr=${my_cidr}"
+    }
+
+    # 4. Roll the service onto the freshly pushed image (the task definition
+    #    always says ":latest", so Terraform alone sees no change on redeploys).
     deploy_backend() {
         echo ">> Deploying backend to AWS ECS..."
-        echo ">> Not implemented yet."
+        local cluster service
+        cluster="$(tf_output ecs_cluster_name)"
+        service="$(tf_output ecs_backend_service_name)"
+        aws ecs update-service --cluster "$cluster" --service "$service" \
+            --force-new-deployment >/dev/null
+        echo ">> Waiting for the service to become stable..."
+        aws ecs wait services-stable --cluster "$cluster" --services "$service"
+    }
+
+    # Fargate task public IPs are dynamic: ask ECS for the task's network
+    # interface, then EC2 for the public IP attached to it.
+    backend_url() {
+        local cluster service task eni ip port
+        cluster="$(tf_output ecs_cluster_name)"
+        service="$(tf_output ecs_backend_service_name)"
+        port="$(tf_output backend_port)"
+        task="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+            --desired-status RUNNING --query 'taskArns[0]' --output text)"
+        if [[ -z "$task" || "$task" == "None" ]]; then
+            echo "Error: no running backend task found" >&2
+            return 1
+        fi
+        eni="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
+            --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
+            --output text)"
+        ip="$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" \
+            --query 'NetworkInterfaces[0].Association.PublicIp' --output text)"
+        echo "http://${ip}:${port}"
+    }
+
+    deploy_frontend() {
+        local url bucket
+        url="$(backend_url)"
+        echo ">> Building frontend against backend ${url}..."
+        (
+            cd "${SCRIPT_DIR}/frontend"
+            npm install
+            VITE_BACKEND_URL="$url" npm run build
+        )
+
+        echo ">> Uploading frontend build to S3..."
+        bucket="$(tf_output frontend_bucket)"
+        aws s3 sync "${SCRIPT_DIR}/frontend/dist" "s3://${bucket}" --delete
+        echo ">> Frontend: $(tf_output frontend_hosting_url)"
+        echo ">> Backend:  ${url}/docs"
     }
 
     deploy_parser() {
@@ -171,26 +243,24 @@ deploy_aws() {
         echo ">> Not implemented yet."
     }
 
-    deploy_storage() {
-        echo ">> Deploying storage to AWS..."
-        echo ">> Creating DynamoDB table (if not exists)..."
-        
-        cd "${SCRIPT_DIR}/terraform"
-        terraform init
-        terraform apply -target=module.dynamodb_table -var force_destroy_buckets=true -auto-approve
-    }
-
+    # Order matters: the frontend bundle needs the backend's IP, which only
+    # exists once the backend task is running.
+    deploy_registry
+    push_backend_image
+    deploy_infra
+    deploy_backend
     deploy_frontend
-    deploy_storage
-    # deploy_backend
     # deploy_parser
 }
 
 destroy_aws() {
-    echo ">> Destroying AWS resources..."
+    echo ">> Destroying AWS resources (frontend + backend; DynamoDB data is kept)..."
+    local my_cidr
+    my_cidr="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32"
     cd "${SCRIPT_DIR}/terraform"
     terraform init
-    terraform destroy -target=module.frontend_bucket -auto-approve
+    terraform destroy -target=module.frontend_bucket -target=module.backend_ecs \
+        -var force_destroy_buckets=true -var "backend_allowed_cidr=${my_cidr}" -auto-approve
 }
 
 case "$ENV_NAME" in
