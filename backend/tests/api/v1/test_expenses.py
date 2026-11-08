@@ -54,3 +54,27 @@ def test_filter_and_monthly_summary(client):
     summary = client.get("/expenses/monthly-summary")
     assert summary.status_code == 200
     assert len(summary.json()) == 2
+
+
+def test_get_after_create_and_delete_missing(client):
+    created = client.post("/expenses/", json=SAMPLE_EXPENSE).json()
+    got = client.get(f"/expenses/{created['id']}")
+    assert got.status_code == 200
+    assert got.json()["items"] == SAMPLE_EXPENSE["items"]
+
+    assert client.delete(f"/expenses/{created['id']}").status_code == 204
+    assert client.delete(f"/expenses/{created['id']}").status_code == 404
+    assert client.put(f"/expenses/{created['id']}", json={"total": 1}).status_code == 404
+
+
+def test_date_range_filter_and_update_moves_date(client):
+    first = client.post("/expenses/", json=SAMPLE_EXPENSE).json()
+    client.post("/expenses/", json={**SAMPLE_EXPENSE, "date": "2024-03-01"})
+
+    in_range = client.get("/expenses/?start_date=2024-01-01&end_date=2024-01-15").json()
+    assert [e["id"] for e in in_range] == [first["id"]]
+
+    client.put(f"/expenses/{first['id']}", json={"date": "2024-05-05"})
+    assert client.get("/expenses/?start_date=2024-01-01&end_date=2024-01-31").json() == []
+    newest_first = client.get("/expenses/").json()
+    assert [e["date"] for e in newest_first] == ["2024-05-05", "2024-03-01"]

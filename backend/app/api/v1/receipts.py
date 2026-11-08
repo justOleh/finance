@@ -1,29 +1,14 @@
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session
 
-from app.db.session import get_db
-from app.models.expense import Expense
-from app.schemas import ExpenseResponse, ReceiptDraftResponse
-from app.services import receipt_service
+from app.db.dynamodb import get_table
+from app.schemas import ExpenseCreate, ExpenseResponse, ReceiptDraftResponse
+from app.services import expense_service, receipt_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
-
-
-def _to_response(expense: Expense) -> ExpenseResponse:
-    return ExpenseResponse(
-        id=expense.id,
-        date=expense.date,
-        store=expense.store,
-        items=expense.items,
-        total=expense.total,
-        receipt_image_path=expense.receipt_image_path,
-        notes=expense.notes,
-        created_at=expense.created_at,
-    )
 
 
 def _validate_and_prepare_upload(file: UploadFile):
@@ -80,7 +65,7 @@ def parse_receipt(file: UploadFile = File(...)):
 
 
 @router.post("/upload", response_model=ExpenseResponse, status_code=201)
-def upload_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_receipt(file: UploadFile = File(...), table=Depends(get_table)):
     filename, content_type, image_bytes, save_path = _validate_and_prepare_upload(file)
 
     parsed: dict = {}
@@ -89,16 +74,12 @@ def upload_receipt(file: UploadFile = File(...), db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    expense = Expense(
+    expense = ExpenseCreate(
         date=receipt_service.parse_expense_date(parsed.get("date")),
         store=parsed.get("store", "Unknown"),
+        items=parsed.get("items", []),
         total=float(parsed.get("total", 0.0)),
         notes=str(parsed.get("raw_text", ""))[:500] if parsed.get("raw_text") else None,
         receipt_image_path=save_path,
     )
-    expense.items = parsed.get("items", [])
-
-    db.add(expense)
-    db.commit()
-    db.refresh(expense)
-    return _to_response(expense)
+    return expense_service.create_expense(table, expense)

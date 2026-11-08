@@ -6,14 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.expenses import router as expenses_router
 from app.api.v1.receipts import router as receipts_router
-from app.db.session import engine
-from app.models import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Path("./data/receipts").mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
     yield
 
 
