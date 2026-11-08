@@ -35,3 +35,11 @@ Always flag cost implications (e.g. NAT gateways, idle resources, data transfer)
 - A `PreToolUse` hook (`.claude/hooks/confirm-git.sh`, registered in `.claude/settings.json`) forces an approval prompt on every state-changing git command. Never try to bypass it.
 - Never push or open PRs unless explicitly asked in a separate request.
 - Never stage or commit Terraform state (`*.tfstate*`), `.env` files, secrets, or build output.
+
+## Linting and formatting (backend)
+
+- Ruff is configured in `backend/pyproject.toml` (pinned in the `dev` extra).
+- `scripts/ruff-fix.sh [files...]` runs `ruff check --fix` then `ruff format` (no args = all of `backend/`). It is the single entry point: don't call ruff directly.
+- Pre-commit (`.pre-commit-config.yaml`) calls that script on `backend/**/*.py`. If it modifies files, the commit aborts: re-stage and commit again. Never use `--no-verify`.
+- A `PostToolUse` hook (`.claude/hooks/ruff-on-edit.sh`) runs the script after every Edit/Write on backend `.py` files. Files may change on disk after an edit, and unfixable lint errors come back as hook feedback: fix them.
+- Keep ruff formatting changes in their own commit, separate from logic changes.
