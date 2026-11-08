@@ -172,14 +172,19 @@ deploy_aws() {
     }
 
     deploy_storage() {
-        echo ">> Deploying storage to AWS S3..."
-        echo ">> Not implemented yet."
+        echo ">> Deploying storage to AWS..."
+        echo ">> Creating DynamoDB table (if not exists)..."
+        
+        cd "${SCRIPT_DIR}/terraform"
+        terraform init
+        terraform apply -target=module.dynamodb_table -var force_destroy_buckets=true -auto-approve
     }
 
     deploy_frontend
-    deploy_backend
-    deploy_parser
     deploy_storage
+    # deploy_backend
+    # deploy_parser
+    
 }
 
 destroy_aws() {
