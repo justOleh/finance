@@ -184,7 +184,6 @@ deploy_aws() {
     deploy_storage
     # deploy_backend
     # deploy_parser
-    
 }
 
 destroy_aws() {
