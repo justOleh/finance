@@ -22,6 +22,12 @@ variable "env" {
   default     = "prod"
 }
 
+variable "local_dev_principal_arns" {
+  description = "IAM user/role ARNs allowed to assume the backend role when running the backend locally."
+  type        = list(string)
+  default     = ["arn:aws:iam::675129110096:user/me"]
+}
+
 variable "force_destroy_buckets" {
   description = "If true, S3 buckets are deleted together with all objects and versions on destroy."
   type        = bool

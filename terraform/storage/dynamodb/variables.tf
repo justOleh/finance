@@ -9,6 +9,12 @@ variable "tables" {
       name = string
       type = string
     }))
+    global_secondary_indexes = optional(list(object({
+      name            = string
+      hash_key        = string
+      range_key       = optional(string)
+      projection_type = optional(string, "ALL")
+    })), [])
   }))
 }
 

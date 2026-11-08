@@ -1,0 +1,48 @@
+# Trust policy: WHO may assume the role.
+# For now only your own IAM user/role (running the backend locally, via an AWS
+# CLI profile with role_arn). When the backend moves to AWS, add a second
+# statement with a Service principal (e.g. ecs-tasks.amazonaws.com).
+data "aws_iam_policy_document" "backend_assume" {
+  statement {
+    sid     = "LocalDevAssumeRole"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "AWS"
+      identifiers = var.local_dev_principal_arns
+    }
+  }
+}
+
+resource "aws_iam_role" "backend" {
+  name               = "${var.name_prefix}-backend"
+  description        = "Assumed locally by the my-finance backend to access its DynamoDB table."
+  assume_role_policy = data.aws_iam_policy_document.backend_assume.json
+  tags               = var.tags
+}
+
+# Permissions policy: WHAT the role may do, scoped to specific table ARNs.
+data "aws_iam_policy_document" "backend_dynamodb" {
+  statement {
+    sid = "AppTableReadWrite"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:GetItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:BatchWriteItem",
+    ]
+    # Querying a GSI is authorized against the index ARN, not the table ARN.
+    resources = concat(
+      var.dynamodb_table_arns,
+      [for arn in var.dynamodb_table_arns : "${arn}/index/*"],
+    )
+  }
+}
+
+resource "aws_iam_role_policy" "backend_dynamodb" {
+  name   = "dynamodb-access"
+  role   = aws_iam_role.backend.id
+  policy = data.aws_iam_policy_document.backend_dynamodb.json
+}

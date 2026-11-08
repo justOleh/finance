@@ -47,3 +47,38 @@ module "frontend_bucket" {
 
   tags = local.common_tags
 }
+
+module "backend_iam" {
+  source = "./iam"
+
+  name_prefix         = local.name_prefix
+  dynamodb_table_arns = values(module.dynamodb_table.table_arns)
+
+  local_dev_principal_arns = var.local_dev_principal_arns
+  tags                = local.common_tags
+}
+
+module "dynamodb_table" {
+  source = "./storage/dynamodb"
+
+  tables = {
+    app = {
+      name      = "${local.name_prefix}-app"
+      hash_key  = "pk"
+      range_key = "sk"
+      attributes = [
+        { name = "pk", type = "S" },
+        { name = "sk", type = "S" },
+        { name = "gsi1pk", type = "S" },
+        { name = "gsi1sk", type = "S" },
+      ]
+      # Access pattern: list expenses by date. gsi1pk is a constant ("EXPENSES"),
+      # gsi1sk is "<yyyy-mm-dd>#<id>" so a date range is a single Query.
+      global_secondary_indexes = [
+        { name = "gsi1", hash_key = "gsi1pk", range_key = "gsi1sk" },
+      ]
+    }
+  }
+
+  tags = local.common_tags
+}
