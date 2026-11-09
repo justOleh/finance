@@ -1,8 +1,7 @@
-"""Extraction engines. The worker only depends on the `extract` interface.
+"""Extraction engines. The parse Lambda only depends on the `extract` interface.
 
-DummyEngine returns fixed data so the whole pipeline (S3 -> SQS -> worker -> DynamoDB ->
-backend -> browser) can be deployed and tested before any model exists. A real engine
-(Qwen with weights from S3, Bedrock, ...) replaces it without touching the rest.
+`ClaudeEngine` (claude_engine.py) is the real one. `DummyEngine` returns fixed data so the whole
+pipeline can be exercised without calling the model (`ENGINE=dummy`).
 """
 
 from dataclasses import dataclass, field
@@ -16,7 +15,7 @@ class ParsedReceipt:
     date: str  # ISO yyyy-mm-dd
     items: list[dict] = field(default_factory=list)  # [{"name": str, "price": float}]
     total: float = 0.0
-    raw_text: str = ""
+    notes: str = ""
 
 
 class Engine(Protocol):
@@ -29,7 +28,7 @@ class DummyEngine:
     model_version = "dummy-1"
 
     def extract(self, image_bytes: bytes, content_type: str) -> ParsedReceipt:
-        # Proves the worker really read the image; the content is otherwise ignored.
+        # Proves the Lambda really read the image; the content is otherwise ignored.
         return ParsedReceipt(
             store="Dummy Market",
             date=date.today().isoformat(),
@@ -39,5 +38,5 @@ class DummyEngine:
                 {"name": "Apples 1kg", "price": 60.0},
             ],
             total=127.5,
-            raw_text=f"dummy parse of {len(image_bytes)} bytes ({content_type})",
+            notes=f"dummy parse of {len(image_bytes)} bytes ({content_type})",
         )

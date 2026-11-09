@@ -6,21 +6,14 @@ import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
-from worker.engine import DummyEngine
-from worker.processor import mark_failed, process_message
+from parse_receipt.engine import DummyEngine, ParsedReceipt
+from parse_receipt.processor import mark_failed, process_message
 
 BUCKET = "test-receipts"
 OWNER = "user-a"
 RECEIPT_ID = "abc123"
-KEY = f"receipts/{OWNER}/{RECEIPT_ID}.jpg"
-
-
-@pytest.fixture(autouse=True)
-def fake_aws_env(monkeypatch):
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-west-1")
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
+KEY = f"receipts/{OWNER}/{RECEIPT_ID}.png"  # converted PNG: what the Lambda is triggered by
+UPLOAD_KEY = f"receipts/{OWNER}/{RECEIPT_ID}.heic"  # original upload, stored on the record
 
 
 @pytest.fixture
@@ -30,7 +23,7 @@ def aws():
         s3.create_bucket(
             Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-west-1"}
         )
-        s3.put_object(Bucket=BUCKET, Key=KEY, Body=b"fake-image", ContentType="image/jpeg")
+        s3.put_object(Bucket=BUCKET, Key=KEY, Body=b"fake-image", ContentType="image/png")
         table = boto3.resource("dynamodb", region_name="eu-west-1").create_table(
             TableName="test-app",
             BillingMode="PAY_PER_REQUEST",
@@ -52,19 +45,15 @@ def _put_uploading_record(table):
             "pk": f"USER#{OWNER}",
             "sk": f"RECEIPT#{RECEIPT_ID}",
             "status": "UPLOADING",
-            "s3_key": KEY,
+            "s3_key": UPLOAD_KEY,
         }
     )
 
 
 def _event(key=KEY):
-    # S3 URL-encodes keys in notifications ("/" becomes %2F): the worker must decode them.
+    # S3 URL-encodes keys in notifications ("/" becomes %2F): the Lambda must decode them.
     return json.dumps(
-        {
-            "Records": [
-                {"s3": {"bucket": {"name": BUCKET}, "object": {"key": quote_plus(key)}}}
-            ]
-        }
+        {"Records": [{"s3": {"bucket": {"name": BUCKET}, "object": {"key": quote_plus(key)}}}]}
     )
 
 
@@ -144,3 +133,60 @@ def test_engine_failure_propagates_and_mark_failed_records_it(aws):
     item = _item(table)
     assert item["status"] == "FAILED"
     assert item["error"] == "model crashed"
+
+
+class FixedEngine:
+    model_version = "fixed"
+
+    def __init__(self, parsed: ParsedReceipt):
+        self.parsed = parsed
+
+    def extract(self, image_bytes, content_type):
+        return self.parsed
+
+
+def _expenses(table):
+    return [i for i in table.scan()["Items"] if i["sk"].startswith("EXPENSE#")]
+
+
+def test_success_stores_a_draft_and_never_creates_an_expense(aws):
+    s3, table = aws
+    _put_uploading_record(table)
+
+    process_message(_event(), s3=s3, table=table, engine=DummyEngine())
+
+    # Only the user's Save (backend POST /expenses) creates the expense.
+    assert _item(table)["status"] == "PARSED"
+    assert _expenses(table) == []
+
+
+@pytest.mark.parametrize(
+    "parsed",
+    [
+        ParsedReceipt(store="Shop", date="2026-03-01", items=[], total=0.0, notes="bottom only"),
+        ParsedReceipt(store="", date="2026-03-01"),
+    ],
+)
+def test_unreadable_receipt_is_failed_without_an_expense_and_without_a_retry(aws, parsed):
+    s3, table = aws
+    _put_uploading_record(table)
+
+    # Does not raise: a retry would give the same answer, so the message must be deleted.
+    process_message(_event(), s3=s3, table=table, engine=FixedEngine(parsed))
+
+    item = _item(table)
+    assert item["status"] == "FAILED"
+    assert "лише частину чека" in item["error"]
+    assert _expenses(table) == []
+
+
+def test_total_without_items_is_still_a_draft(aws):
+    s3, table = aws
+    _put_uploading_record(table)
+    parsed = ParsedReceipt(store="Shop", date="2026-03-01", items=[], total=99.9)
+
+    process_message(_event(), s3=s3, table=table, engine=FixedEngine(parsed))
+
+    item = _item(table)
+    assert item["status"] == "PARSED"
+    assert float(item["result"]["total"]) == 99.9
