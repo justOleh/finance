@@ -1,6 +1,6 @@
 ADR-007: Run the backend on ECS Fargate with a public IP, no load balancer
 
-**Status** Accepted
+**Status** Accepted (the IP allow-list was removed by [ADR-011](ADR-011-drop-backend-ip-allow-list.md))
 **Date** 2026-11-08
 
 ## Context

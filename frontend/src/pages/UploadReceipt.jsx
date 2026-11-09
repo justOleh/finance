@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Upload, ImageIcon, CheckCircle2, XCircle, Trash2, Plus, Save } from 'lucide-react'
-import { parseReceipt, createExpense } from '../api'
+import { requestReceiptUpload, uploadToS3, getReceipt, createExpense } from '../api'
 import { format } from 'date-fns'
 import { uk } from 'date-fns/locale'
 
@@ -14,6 +14,18 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif'])
 
+const EXTENSION_MIME_TYPES = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+}
+
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 120000
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const getFileExtension = (filename) => {
   if (!filename) return ''
   const dotIndex = filename.lastIndexOf('.')
@@ -24,6 +36,9 @@ const isHeicFile = (f) => {
   const ext = getFileExtension(f?.name)
   return f?.type === 'image/heic' || f?.type === 'image/heif' || ext === '.heic' || ext === '.heif'
 }
+
+// Browsers often report an empty type for HEIC files; the upload policy needs a real one.
+const contentTypeOf = (f) => f.type || EXTENSION_MIME_TYPES[getFileExtension(f.name)]
 
 const isAllowedImageFile = (f) => {
   const ext = getFileExtension(f?.name)
@@ -60,6 +75,12 @@ export default function UploadReceipt() {
   const [error, setError] = useState(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const handleFile = (f) => {
     if (!f) return
@@ -91,9 +112,24 @@ export default function UploadReceipt() {
     setUploading(true)
     setError(null)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const data = await parseReceipt(fd)
+      const upload = await requestReceiptUpload(contentTypeOf(file))
+      await uploadToS3(upload, file)
+
+      // The worker parses asynchronously: poll until it finishes (or fails / times out).
+      const deadline = Date.now() + POLL_TIMEOUT_MS
+      let receipt = await getReceipt(upload.receipt_id)
+      while (receipt.status === 'UPLOADING') {
+        if (!mountedRef.current) return
+        if (Date.now() > deadline) throw new Error('Розпізнавання триває занадто довго. Спробуйте пізніше.')
+        await sleep(POLL_INTERVAL_MS)
+        receipt = await getReceipt(upload.receipt_id)
+      }
+      if (receipt.status === 'FAILED') {
+        throw new Error(receipt.error || 'Не вдалося розпізнати чек.')
+      }
+
+      const data = receipt.draft
+      if (!mountedRef.current) return
       setDraft({
         date: data.date,
         store: data.store || '',
@@ -108,9 +144,10 @@ export default function UploadReceipt() {
           : [],
       })
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err.response?.data?.detail || err.message)
     } finally {
-      setUploading(false)
+      if (mountedRef.current) setUploading(false)
     }
   }
 

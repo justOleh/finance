@@ -11,7 +11,7 @@
 #   Infra     -> terraform apply (S3, DynamoDB, IAM, ECS)
 #   Backend   -> docker build + push to ECR + ECS force-new-deployment
 #   Frontend  -> npm build with VITE_BACKEND_URL=<task public IP> + s3 sync
-#   Parser    -> docker build + push to ECR + ECS force-new-deployment
+#   Parser    -> docker build + push to ECR + ECS force-new-deployment (SQS worker, no port)
 #
 # Env overrides (all optional):
 #   PROJECT=my-finance ENV_NAME=prod AWS_REGION=us-east-1 IMAGE_TAG=$(git rev-parse --short HEAD)
@@ -149,20 +149,13 @@ deploy_aws() {
     local tf_dir="${SCRIPT_DIR}/terraform"
     export AWS_REGION="$region" AWS_DEFAULT_REGION="$region"
 
-    # The API is plain HTTP (no TLS yet, see ADR-009), so as a second layer only your
-    # current public IP may reach it, on top of Cognito token checks.
-    local my_cidr
-    my_cidr="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32"
-    echo ">> Backend will only accept connections from ${my_cidr}"
-
     tf_output() { terraform -chdir="$tf_dir" output -raw "$1"; }
 
     # 1. Registry first, so the image exists before the ECS service is created.
     deploy_registry() {
         echo ">> Creating ECR repositories..."
         terraform -chdir="$tf_dir" init
-        terraform -chdir="$tf_dir" apply -auto-approve -target=module.ecr \
-            -var "backend_allowed_cidr=${my_cidr}"
+        terraform -chdir="$tf_dir" apply -auto-approve -target=module.ecr
     }
 
     # 2. Build + push the backend image.
@@ -180,12 +173,26 @@ deploy_aws() {
         docker push "${repo}:latest"
     }
 
-    # 3. Everything else (frontend bucket, DynamoDB, IAM, ECS).
+    # 2b. Build + push the receipt parser worker image (must exist before the ECS service).
+    push_parser_image() {
+        echo ">> Building and pushing receipt parser worker image..."
+        local repo registry
+        repo="$(tf_output parser_ecr_repository_url)"
+        registry="${repo%%/*}"
+
+        aws ecr get-login-password --region "$region" \
+            | docker login --username AWS --password-stdin "$registry"
+
+        docker build --platform linux/arm64 -f "${SCRIPT_DIR}/receipt_parser/Dockerfile.worker" \
+            -t "${repo}:latest" "${SCRIPT_DIR}/receipt_parser"
+        docker push "${repo}:latest"
+    }
+
+    # 3. Everything else (buckets, queue, DynamoDB, IAM, ECS).
     deploy_infra() {
-        echo ">> Applying Terraform (frontend bucket, DynamoDB, IAM, ECS)..."
+        echo ">> Applying Terraform (buckets, SQS, DynamoDB, IAM, ECS)..."
         terraform -chdir="$tf_dir" apply -auto-approve \
-            -var force_destroy_buckets=true \
-            -var "backend_allowed_cidr=${my_cidr}"
+            -var force_destroy_buckets=true
     }
 
     # 4. Roll the service onto the freshly pushed image (the task definition
@@ -244,29 +251,37 @@ deploy_aws() {
         echo ">> Backend:  ${url}/docs"
     }
 
+    # Same ":latest" trick as the backend. A queue worker has no port, so there is no URL to
+    # look up; "stable" means the new task started and the old one drained.
     deploy_parser() {
-        echo ">> Deploying receipt parser to AWS ECS..."
-        echo ">> Not implemented yet."
+        echo ">> Deploying receipt parser worker to AWS ECS..."
+        local cluster service
+        cluster="$(tf_output ecs_cluster_name)"
+        service="$(tf_output ecs_parser_service_name)"
+        aws ecs update-service --cluster "$cluster" --service "$service" \
+            --force-new-deployment >/dev/null
+        echo ">> Waiting for the parser service to become stable..."
+        aws ecs wait services-stable --cluster "$cluster" --services "$service"
     }
 
     # Order matters: the frontend bundle needs the backend's IP, which only
     # exists once the backend task is running.
     deploy_registry
     push_backend_image
+    push_parser_image
     deploy_infra
     deploy_backend
+    deploy_parser
     deploy_frontend
-    # deploy_parser
 }
 
 destroy_aws() {
-    echo ">> Destroying AWS resources (frontend + backend; DynamoDB data is kept)..."
-    local my_cidr
-    my_cidr="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32"
+    echo ">> Destroying AWS resources (frontend, backend, parser worker; DynamoDB data, Cognito, S3 receipts, SQS are kept)..."
     cd "${SCRIPT_DIR}/terraform"
     terraform init
     terraform destroy -target=module.frontend_bucket -target=module.backend_ecs \
-        -var force_destroy_buckets=true -var "backend_allowed_cidr=${my_cidr}" -auto-approve
+        -target=module.parser_worker \
+        -var force_destroy_buckets=true -auto-approve
 }
 
 case "$ENV_NAME" in

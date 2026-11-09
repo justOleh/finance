@@ -9,6 +9,10 @@ class Settings:
     aws_region: str = os.getenv("AWS_REGION", "eu-west-1")
     receipt_parser_url: str = os.getenv("RECEIPT_PARSER_URL", "http://localhost:8001")
     receipts_dir: str = os.getenv("RECEIPTS_DIR", "./data/receipts")
+    # Private S3 bucket receiving direct browser uploads (terraform output receipts_bucket).
+    receipts_bucket: str = os.getenv("RECEIPTS_BUCKET", "")
+    upload_url_expiry_seconds: int = int(os.getenv("UPLOAD_URL_EXPIRY_SECONDS", "300"))
+    max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
     # Cognito user pool that issues the access tokens (terraform outputs).
     cognito_user_pool_id: str = os.getenv("COGNITO_USER_POOL_ID", "")
     cognito_client_id: str = os.getenv("COGNITO_CLIENT_ID", "")

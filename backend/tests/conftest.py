@@ -5,9 +5,15 @@ from moto import mock_aws
 
 from app.core.auth import get_current_user
 from app.db.dynamodb import get_table
+from app.db.s3 import get_s3_client
 from app.main import app
 
 TABLE_NAME = "test-app"
+
+
+def _signing_only_s3_client():
+    """Presigning is computed locally (no network), so tests need no S3 mock."""
+    return boto3.client("s3", region_name="eu-west-1")
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +59,7 @@ def table(fake_aws_env):
 def client(table):
     """TestClient signed in as "user-a" (token verification is covered in test_auth.py)."""
     app.dependency_overrides[get_table] = lambda: table
+    app.dependency_overrides[get_s3_client] = _signing_only_s3_client
     app.dependency_overrides[get_current_user] = lambda: "user-a"
     with TestClient(app) as c:
         yield c
@@ -63,6 +70,7 @@ def client(table):
 def client_as(table):
     """Factory: client_as("user-b") returns a TestClient acting as that user."""
     app.dependency_overrides[get_table] = lambda: table
+    app.dependency_overrides[get_s3_client] = _signing_only_s3_client
 
     def make_client(user_id: str) -> TestClient:
         app.dependency_overrides[get_current_user] = lambda: user_id

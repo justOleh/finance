@@ -36,12 +36,6 @@ variable "desired_count" {
   default     = 1
 }
 
-variable "allowed_cidr" {
-  description = "CIDR allowed to reach the backend port (e.g. your public IP as x.x.x.x/32). Null = no inbound rule, nobody can connect."
-  type        = string
-  default     = null
-}
-
 variable "environment" {
   description = "Environment variables injected into the backend container."
   type        = map(string)

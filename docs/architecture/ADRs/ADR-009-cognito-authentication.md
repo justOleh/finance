@@ -13,7 +13,7 @@ The API was open to anyone on the allow-listed IP (ADR-007) and all expenses wer
 - **Local development:** `AUTH_DISABLED=true` (only in `envs/local.env`) makes the backend act as the fixed user `local`; the frontend skips the login when `VITE_COGNITO_*` are empty.
 - **Data model:** the owner is part of every key. Item `pk = USER#<sub>`, `sk = EXPENSE#<id>`; GSI `gsi1pk = USER#<sub>`, `gsi1sk = <date>#<id>`. Another user's id is simply "not found" (404), and there is no per-item owner check to forget. This replaces the key layout of ADR-003 and removes its constant-partition downside.
 - **Existing data was wiped**, not migrated (personal data, old keys are incompatible).
-- The IP allow-list on the security group stays.
+- The IP allow-list on the security group stays. *(Removed later, see [ADR-011](ADR-011-drop-backend-ip-allow-list.md).)*
 
 ## Consequences
 - **+** No auth code to run or patch ourselves; passwords never reach our backend; per-request verification needs no call to Cognito.

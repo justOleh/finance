@@ -1,6 +1,6 @@
 # Backend on ECS Fargate, "cheapest possible" variant:
 #  - default VPC, public subnets, task gets a public IP (no NAT gateway, no ALB)
-#  - inbound port is restricted to one CIDR (your IP) because the API has no auth yet
+#  - inbound port is open to the internet; access control is Cognito JWT checks in the API
 
 # --- Networking (default VPC) -------------------------------------------------
 data "aws_vpc" "default" {
@@ -16,20 +16,18 @@ data "aws_subnets" "default" {
 
 resource "aws_security_group" "backend" {
   name        = "${var.name_prefix}-backend"
-  description = "Backend task: inbound API port from allowed CIDR only"
+  description = "Backend task: inbound API port, auth enforced by the API (Cognito)"
   vpc_id      = data.aws_vpc.default.id
   tags        = var.tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "api" {
-  count = var.allowed_cidr == null ? 0 : 1
-
   security_group_id = aws_security_group.backend.id
-  description       = "Backend API from allowed CIDR"
+  description       = "Backend API (public, Cognito-authenticated)"
   ip_protocol       = "tcp"
   from_port         = var.container_port
   to_port           = var.container_port
-  cidr_ipv4         = var.allowed_cidr
+  cidr_ipv4         = "0.0.0.0/0"
 }
 
 # The task must reach ECR (pull image), CloudWatch (logs) and DynamoDB.

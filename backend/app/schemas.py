@@ -46,3 +46,22 @@ class ReceiptDraftResponse(BaseModel):
     total: float
     notes: str | None = None
     receipt_image_path: str | None = None
+
+
+class ReceiptUploadRequest(BaseModel):
+    content_type: str
+
+
+class ReceiptUploadResponse(BaseModel):
+    """Everything the browser needs for a direct S3 POST (fields first, file last)."""
+
+    receipt_id: str
+    upload_url: str
+    fields: dict[str, str]
+
+
+class ReceiptStatusResponse(BaseModel):
+    id: str
+    status: str  # UPLOADING | PARSED | FAILED
+    error: str | None = None
+    draft: ReceiptDraftResponse | None = None

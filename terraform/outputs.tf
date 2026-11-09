@@ -53,3 +53,28 @@ output "cognito_client_id" {
   description = "Cognito app client id used by the frontend."
   value       = module.cognito.client_id
 }
+
+output "parser_ecr_repository_url" {
+  description = "ECR repository the receipt parser worker image is pushed to."
+  value       = module.ecr.repository_urls["parser"]
+}
+
+output "ecs_parser_service_name" {
+  description = "ECS service running the receipt parser worker."
+  value       = module.parser_worker.service_name
+}
+
+output "receipts_bucket" {
+  description = "Private bucket receiving receipt uploads."
+  value       = module.receipts_bucket.bucket_ids["receipts"]
+}
+
+output "receipts_queue_url" {
+  description = "SQS queue the parser worker consumes."
+  value       = module.receipts_queue.queue_url
+}
+
+output "receipts_dlq_url" {
+  description = "Dead-letter queue: receipts that failed 3 times."
+  value       = module.receipts_queue.dlq_url
+}

@@ -1,6 +1,6 @@
 # Implementation plan 1: receipt upload and parsing pipeline
 
-**Status** Draft, open decisions marked **[DECIDE]**
+**Status** Being implemented with a dummy engine, see [ADR-010](../architecture/ADRs/ADR-010-async-receipt-upload-pipeline.md) for the decisions taken and the deviations from this plan
 **Date** 2026-11-08
 **Goal** Upload a receipt image from the browser and have the extracted expense appear in the app, without the image passing through the backend.
 

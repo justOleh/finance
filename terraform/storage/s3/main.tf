@@ -38,6 +38,19 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = each.value.block_public
 }
 
+resource "aws_s3_bucket_cors_configuration" "this" {
+  for_each = { for k, v in var.buckets : k => v if length(v.cors_allowed_origins) > 0 }
+
+  bucket = aws_s3_bucket.this[each.key].id
+
+  cors_rule {
+    allowed_origins = each.value.cors_allowed_origins
+    allowed_methods = each.value.cors_allowed_methods
+    allowed_headers = ["*"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_website_configuration" "this" {
   for_each = { for k, v in var.buckets : k => v if v.website_hosting }
 

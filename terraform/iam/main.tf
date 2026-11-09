@@ -57,3 +57,19 @@ resource "aws_iam_role_policy" "backend_dynamodb" {
   role   = aws_iam_role.backend.id
   policy = data.aws_iam_policy_document.backend_dynamodb.json
 }
+
+# A presigned POST is only valid if the signer itself may perform the upload, so the backend
+# needs s3:PutObject. It cannot read or list receipts, and the worker has its own role.
+data "aws_iam_policy_document" "backend_receipts_upload" {
+  statement {
+    sid       = "ReceiptsUploadOnly"
+    actions   = ["s3:PutObject"]
+    resources = ["${var.receipts_bucket_arn}/receipts/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "backend_receipts_upload" {
+  name   = "receipts-upload"
+  role   = aws_iam_role.backend.id
+  policy = data.aws_iam_policy_document.backend_receipts_upload.json
+}

@@ -28,14 +28,14 @@ variable "local_dev_principal_arns" {
   default     = ["arn:aws:iam::675129110096:user/me"]
 }
 
-variable "backend_allowed_cidr" {
-  description = "CIDR allowed to reach the backend (your public IP as x.x.x.x/32). deploy.sh detects and passes it. Null = nobody can connect."
-  type        = string
-  default     = null
-}
-
 variable "backend_desired_count" {
   description = "Number of backend tasks. 0 stops Fargate billing without destroying anything."
+  type        = number
+  default     = 1
+}
+
+variable "parser_desired_count" {
+  description = "Number of receipt parser workers. 0 stops Fargate billing; uploads then wait in the queue."
   type        = number
   default     = 1
 }

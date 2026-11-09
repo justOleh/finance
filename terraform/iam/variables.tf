@@ -8,6 +8,11 @@ variable "dynamodb_table_arns" {
   type        = list(string)
 }
 
+variable "receipts_bucket_arn" {
+  description = "ARN of the receipts bucket. The backend may only write under receipts/ (presigned uploads)."
+  type        = string
+}
+
 variable "local_dev_principal_arns" {
   description = "IAM user/role ARNs allowed to assume the backend role from a developer machine."
   type        = list(string)
