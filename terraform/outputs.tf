@@ -54,14 +54,24 @@ output "cognito_client_id" {
   value       = module.cognito.client_id
 }
 
-output "parser_ecr_repository_url" {
-  description = "ECR repository the receipt parser worker image is pushed to."
-  value       = module.ecr.repository_urls["parser"]
+output "convert_image_ecr_repository_url" {
+  description = "ECR repository the convert-image Lambda image is pushed to."
+  value       = module.ecr.repository_urls["convert_image"]
 }
 
-output "ecs_parser_service_name" {
-  description = "ECS service running the receipt parser worker."
-  value       = module.parser_worker.service_name
+output "parse_receipt_ecr_repository_url" {
+  description = "ECR repository the parse-receipt Lambda image is pushed to."
+  value       = module.ecr.repository_urls["parse_receipt"]
+}
+
+output "convert_image_function_name" {
+  description = "Lambda that converts uploaded images to PNG."
+  value       = module.convert_lambda.function_name
+}
+
+output "parse_receipt_function_name" {
+  description = "Lambda that parses converted receipts with Claude."
+  value       = module.parse_lambda.function_name
 }
 
 output "receipts_bucket" {
@@ -69,8 +79,18 @@ output "receipts_bucket" {
   value       = module.receipts_bucket.bucket_ids["receipts"]
 }
 
+output "receipts_converted_bucket" {
+  description = "Private bucket holding the PNG versions of the uploads."
+  value       = module.receipts_bucket.bucket_ids["converted"]
+}
+
+output "convert_failures_queue_url" {
+  description = "Events of uploads that could not be converted (after the Lambda retries)."
+  value       = module.convert_lambda.failures_queue_url
+}
+
 output "receipts_queue_url" {
-  description = "SQS queue the parser worker consumes."
+  description = "SQS queue the parse-receipt Lambda consumes."
   value       = module.receipts_queue.queue_url
 }
 

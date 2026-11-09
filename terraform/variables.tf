@@ -34,10 +34,22 @@ variable "backend_desired_count" {
   default     = 1
 }
 
-variable "parser_desired_count" {
-  description = "Number of receipt parser workers. 0 stops Fargate billing; uploads then wait in the queue."
+variable "parse_max_concurrency" {
+  description = "Maximum parallel parse-receipt invocations (spend and API rate-limit cap, minimum 2)."
   type        = number
-  default     = 1
+  default     = 2
+}
+
+variable "claude_model" {
+  description = "Claude model id used to parse receipts."
+  type        = string
+  default     = "claude-sonnet-5-5"
+}
+
+variable "claude_effort" {
+  description = "Claude effort level (low, medium, high, xhigh, max). Lower is cheaper and faster."
+  type        = string
+  default     = "medium"
 }
 
 variable "force_destroy_buckets" {

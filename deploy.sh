@@ -8,10 +8,15 @@
 #
 # AWS (cheap mode: Fargate task with public IP, no ALB; API is public, Cognito-authenticated):
 #   Registry  -> terraform apply -target=module.ecr (ECR outlives --down)
-#   Infra     -> terraform apply (S3, DynamoDB, IAM, ECS)
+#   Infra     -> terraform apply (S3, SQS, DynamoDB, IAM, ECS, Lambda)
 #   Backend   -> docker build + push to ECR + ECS force-new-deployment
+#   Lambdas   -> docker build + push to ECR + lambda update-function-code
+#                (convert-image: any format -> PNG, parse-receipt: SQS -> Claude -> DynamoDB)
 #   Frontend  -> npm build with VITE_BACKEND_URL=<task public IP> + s3 sync
-#   Parser    -> docker build + push to ECR + ECS force-new-deployment (SQS worker, no port)
+#
+# The parse-receipt Lambda needs ANTHROPIC_API_KEY: set it once in the Lambda console
+# (Configuration > Environment variables). Terraform only creates a placeholder and never
+# overwrites the value afterwards.
 #
 # Env overrides (all optional):
 #   PROJECT=my-finance ENV_NAME=prod AWS_REGION=us-east-1 IMAGE_TAG=$(git rev-parse --short HEAD)
@@ -173,24 +178,30 @@ deploy_aws() {
         docker push "${repo}:latest"
     }
 
-    # 2b. Build + push the receipt parser worker image (must exist before the ECS service).
-    push_parser_image() {
-        echo ">> Building and pushing receipt parser worker image..."
-        local repo registry
-        repo="$(tf_output parser_ecr_repository_url)"
+    # 2b. Build + push the Lambda images (must exist before the functions are created).
+    #     --provenance=false: Lambda rejects the attestation manifests buildx adds by default.
+    push_lambda_image() {
+        local output_name="$1" dir="$2" repo registry
+        echo ">> Building and pushing ${dir} Lambda image..."
+        repo="$(tf_output "$output_name")"
         registry="${repo%%/*}"
 
         aws ecr get-login-password --region "$region" \
             | docker login --username AWS --password-stdin "$registry"
 
-        docker build --platform linux/arm64 -f "${SCRIPT_DIR}/receipt_parser/Dockerfile.worker" \
-            -t "${repo}:latest" "${SCRIPT_DIR}/receipt_parser"
+        docker build --platform linux/arm64 --provenance=false \
+            -t "${repo}:latest" "${SCRIPT_DIR}/lambdas/${dir}"
         docker push "${repo}:latest"
     }
 
-    # 3. Everything else (buckets, queue, DynamoDB, IAM, ECS).
+    push_lambda_images() {
+        push_lambda_image convert_image_ecr_repository_url convert_image
+        push_lambda_image parse_receipt_ecr_repository_url parse_receipt
+    }
+
+    # 3. Everything else (buckets, queue, DynamoDB, IAM, ECS, Lambda).
     deploy_infra() {
-        echo ">> Applying Terraform (buckets, SQS, DynamoDB, IAM, ECS)..."
+        echo ">> Applying Terraform (buckets, SQS, DynamoDB, IAM, ECS, Lambda)..."
         terraform -chdir="$tf_dir" apply -auto-approve \
             -var force_destroy_buckets=true
     }
@@ -251,36 +262,54 @@ deploy_aws() {
         echo ">> Backend:  ${url}/docs"
     }
 
-    # Same ":latest" trick as the backend. A queue worker has no port, so there is no URL to
-    # look up; "stable" means the new task started and the old one drained.
-    deploy_parser() {
-        echo ">> Deploying receipt parser worker to AWS ECS..."
-        local cluster service
-        cluster="$(tf_output ecs_cluster_name)"
-        service="$(tf_output ecs_parser_service_name)"
-        aws ecs update-service --cluster "$cluster" --service "$service" \
-            --force-new-deployment >/dev/null
-        echo ">> Waiting for the parser service to become stable..."
-        aws ecs wait services-stable --cluster "$cluster" --services "$service"
+    # Same ":latest" trick as the backend: Lambda resolves the tag to an image digest when the
+    # code is updated, so pushing :latest alone changes nothing. Point each function at the
+    # freshly pushed image and wait until the update is finished.
+    deploy_lambdas() {
+        local output_name function repo
+        for output_name in convert_image_function_name parse_receipt_function_name; do
+            function="$(tf_output "$output_name")"
+            case "$output_name" in
+                convert_image_*) repo="$(tf_output convert_image_ecr_repository_url)" ;;
+                *)               repo="$(tf_output parse_receipt_ecr_repository_url)" ;;
+            esac
+            echo ">> Updating Lambda ${function}..."
+            aws lambda update-function-code --function-name "$function" \
+                --image-uri "${repo}:latest" --architectures arm64 >/dev/null
+            aws lambda wait function-updated --function-name "$function"
+        done
+        warn_if_api_key_missing
+    }
+
+    # The key itself is never printed: only compared with the Terraform placeholder.
+    warn_if_api_key_missing() {
+        local function key
+        function="$(tf_output parse_receipt_function_name)"
+        key="$(aws lambda get-function-configuration --function-name "$function" \
+            --query 'Environment.Variables.ANTHROPIC_API_KEY' --output text)"
+        if [[ -z "$key" || "$key" == "None" || "$key" == "set-me-in-the-lambda-console" ]]; then
+            echo ">> WARNING: ANTHROPIC_API_KEY is not set on Lambda ${function}." >&2
+            echo ">>          Set it in the AWS console (Lambda > Configuration > Environment variables);" >&2
+            echo ">>          until then every parse fails and ends in the dead-letter queue." >&2
+        fi
     }
 
     # Order matters: the frontend bundle needs the backend's IP, which only
     # exists once the backend task is running.
     deploy_registry
     push_backend_image
-    push_parser_image
+    push_lambda_images
     deploy_infra
     deploy_backend
-    deploy_parser
+    deploy_lambdas
     deploy_frontend
 }
 
 destroy_aws() {
-    echo ">> Destroying AWS resources (frontend, backend, parser worker; DynamoDB data, Cognito, S3 receipts, SQS are kept)..."
+    echo ">> Destroying AWS resources (frontend and backend; Lambdas, DynamoDB data, Cognito, S3 receipts, SQS are kept: they cost nothing while idle)..."
     cd "${SCRIPT_DIR}/terraform"
     terraform init
     terraform destroy -target=module.frontend_bucket -target=module.backend_ecs \
-        -target=module.parser_worker \
         -var force_destroy_buckets=true -auto-approve
 }
 

@@ -67,8 +67,12 @@ module "ecr" {
       name         = "${local.name_prefix}-backend"
       force_delete = true # learning env: allow destroy even if images exist
     }
-    parser = {
-      name         = "${local.name_prefix}-parser"
+    convert_image = {
+      name         = "${local.name_prefix}-convert-image"
+      force_delete = true
+    }
+    parse_receipt = {
+      name         = "${local.name_prefix}-parse-receipt"
       force_delete = true
     }
   }
@@ -107,8 +111,15 @@ module "backend_ecs" {
   tags = local.common_tags
 }
 
-# --- Receipt upload pipeline (ADR-010) ---------------------------------------
-# Browser --presigned POST--> S3 --ObjectCreated--> SQS --> parser worker --> DynamoDB
+# --- Receipt pipeline (ADR-010, ADR-013) --------------------------------------
+# Browser --presigned POST--> S3 uploads (any image format)
+#   --ObjectCreated--> Lambda convert-image --PNG--> S3 converted
+#   --ObjectCreated--> SQS (+ DLQ) --> Lambda parse-receipt --Claude API--> DynamoDB
+
+locals {
+  # The queue's visibility timeout must be at least 6 times the consuming function's timeout.
+  parse_timeout_seconds = 120
+}
 
 module "receipts_bucket" {
   source = "./storage/s3"
@@ -121,6 +132,13 @@ module "receipts_bucket" {
       cors_allowed_origins = [module.frontend_bucket.website_urls["app"]]
       cors_allowed_methods = ["POST"]
     }
+    # PNGs written by the convert-image Lambda. Browsers never touch it (no CORS). The originals
+    # stay in the receipts bucket, so these can be re-created and are expired after a month.
+    converted = {
+      name            = "${local.name_prefix}-receipts-converted"
+      force_destroy   = var.force_destroy_buckets
+      expiration_days = 30
+    }
   }
 
   tags = local.common_tags
@@ -129,16 +147,46 @@ module "receipts_bucket" {
 module "receipts_queue" {
   source = "./sqs"
 
-  name              = "${local.name_prefix}-receipts"
-  source_bucket_arn = module.receipts_bucket.bucket_arns["receipts"]
-  account_id        = var.aws_account_id
-  max_receive_count = 3
+  name = "${local.name_prefix}-receipts"
+  # Only the converted bucket sends to the queue (the uploads bucket triggers the Lambda).
+  source_bucket_arn          = module.receipts_bucket.bucket_arns["converted"]
+  account_id                 = var.aws_account_id
+  max_receive_count          = 3
+  visibility_timeout_seconds = 6 * local.parse_timeout_seconds
 
   tags = local.common_tags
 }
 
-resource "aws_s3_bucket_notification" "receipts" {
+module "convert_lambda" {
+  source = "./convert_lambda"
+
+  name_prefix           = local.name_prefix
+  account_id            = var.aws_account_id
+  image_repository_url  = module.ecr.repository_urls["convert_image"]
+  uploads_bucket_arn    = module.receipts_bucket.bucket_arns["receipts"]
+  converted_bucket_arn  = module.receipts_bucket.bucket_arns["converted"]
+  converted_bucket_name = module.receipts_bucket.bucket_ids["converted"]
+
+  tags = local.common_tags
+}
+
+# One notification configuration per bucket: the uploads bucket triggers the Lambda (it used to
+# send to SQS, ADR-010) and the converted bucket sends to the queue.
+resource "aws_s3_bucket_notification" "uploads" {
   bucket = module.receipts_bucket.bucket_ids["receipts"]
+
+  lambda_function {
+    lambda_function_arn = module.convert_lambda.function_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "receipts/"
+  }
+
+  # S3 validates it may invoke the function when this is created: the permission must exist first.
+  depends_on = [module.convert_lambda]
+}
+
+resource "aws_s3_bucket_notification" "converted" {
+  bucket = module.receipts_bucket.bucket_ids["converted"]
 
   queue {
     queue_arn     = module.receipts_queue.queue_arn
@@ -150,21 +198,22 @@ resource "aws_s3_bucket_notification" "receipts" {
   depends_on = [module.receipts_queue]
 }
 
-module "parser_worker" {
-  source = "./worker"
+module "parse_lambda" {
+  source = "./parse_lambda"
 
   name_prefix          = local.name_prefix
-  aws_region           = var.aws_region
-  cluster_arn          = module.backend_ecs.cluster_arn
-  image_repository_url = module.ecr.repository_urls["parser"]
-  desired_count        = var.parser_desired_count
+  image_repository_url = module.ecr.repository_urls["parse_receipt"]
   queue_arn            = module.receipts_queue.queue_arn
-  receipts_bucket_arn  = module.receipts_bucket.bucket_arns["receipts"]
+  converted_bucket_arn = module.receipts_bucket.bucket_arns["converted"]
   dynamodb_table_arns  = values(module.dynamodb_table.table_arns)
+  timeout_seconds      = local.parse_timeout_seconds
+  maximum_concurrency  = var.parse_max_concurrency
 
+  # ANTHROPIC_API_KEY is deliberately not here: set it in the Lambda console (see the module).
   environment = {
-    AWS_REGION          = var.aws_region
-    QUEUE_URL           = module.receipts_queue.queue_url
+    ENGINE              = "claude"
+    CLAUDE_MODEL        = var.claude_model
+    CLAUDE_EFFORT       = var.claude_effort
     DYNAMODB_TABLE_NAME = module.dynamodb_table.table_names["app"]
     MAX_RECEIVE_COUNT   = "3" # keep equal to the queue's maxReceiveCount
   }

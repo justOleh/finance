@@ -13,6 +13,8 @@ variable "buckets" {
     # Empty = no CORS configuration.
     cors_allowed_origins = optional(list(string), [])
     cors_allowed_methods = optional(list(string), ["GET"])
+    # Delete objects (and old versions) this many days after creation. null = keep forever.
+    expiration_days = optional(number, null)
   }))
 }
 

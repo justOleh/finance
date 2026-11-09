@@ -51,6 +51,31 @@ resource "aws_s3_bucket_cors_configuration" "this" {
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  for_each = { for k, v in var.buckets : k => v if v.expiration_days != null }
+
+  bucket = aws_s3_bucket.this[each.key].id
+
+  rule {
+    id     = "expire-objects"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = each.value.expiration_days
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = each.value.expiration_days
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 resource "aws_s3_bucket_website_configuration" "this" {
   for_each = { for k, v in var.buckets : k => v if v.website_hosting }
 
