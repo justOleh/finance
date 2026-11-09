@@ -1,6 +1,6 @@
 # ADR-010: Asynchronous receipt pipeline (presigned S3 upload, SQS, parser worker)
 
-**Status** Accepted (pipeline deployed with a dummy engine; the real model comes later)
+**Status** Accepted (pipeline deployed with a dummy engine; the real model comes later). **Partly superseded by [ADR-013](ADR-013-lambda-receipt-pipeline-with-png-conversion.md) (proposed):** the Fargate worker, and the S3-to-SQS notification on the upload bucket, are to be replaced by a convert Lambda, a second bucket and a parse Lambda. The presigned POST, receipt record, key layout, idempotent writes and the `Engine` interface stay.
 **Date** 2026-11-09
 
 ## Context
