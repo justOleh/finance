@@ -9,16 +9,19 @@ from botocore.exceptions import ClientError
 
 from app.schemas import ExpenseCreate, ExpenseResponse, ExpenseUpdate, MonthlySummary
 
-# Single-table design (see terraform/main.tf):
-#   item:  pk = EXPENSE#<id>, sk = META            -> get / update / delete by id
-#   gsi1:  gsi1pk = EXPENSES, gsi1sk = <date>#<id> -> list by date range (newest first)
-_SK = "META"
+# Single-table design (see terraform/main.tf and ADR-009). Every key contains the owner's
+# Cognito `sub`, so a user can only ever address their own items:
+#   item:  pk = USER#<sub>, sk = EXPENSE#<id>          -> get / update / delete by id
+#   gsi1:  gsi1pk = USER#<sub>, gsi1sk = <date>#<id>   -> list by date range (newest first)
 _GSI = "gsi1"
-_GSI_PK = "EXPENSES"
 
 
-def _pk(expense_id: str) -> dict[str, str]:
-    return {"pk": f"EXPENSE#{expense_id}", "sk": _SK}
+def _user_pk(user_id: str) -> str:
+    return f"USER#{user_id}"
+
+
+def _key(user_id: str, expense_id: str) -> dict[str, str]:
+    return {"pk": _user_pk(user_id), "sk": f"EXPENSE#{expense_id}"}
 
 
 def _to_dynamo(value: Any) -> Any:
@@ -50,6 +53,7 @@ def _to_response(item: dict) -> ExpenseResponse:
 
 
 def _build_item(
+    user_id: str,
     expense_id: str,
     day: date,
     store: str,
@@ -60,10 +64,11 @@ def _build_item(
     created_at: str,
 ) -> dict:
     return {
-        **_pk(expense_id),
-        "gsi1pk": _GSI_PK,
+        **_key(user_id, expense_id),
+        "gsi1pk": _user_pk(user_id),
         "gsi1sk": f"{day.isoformat()}#{expense_id}",
         "id": expense_id,
+        "user_id": user_id,
         "date": day.isoformat(),
         "store": store,
         "store_lower": store.lower(),
@@ -76,14 +81,19 @@ def _build_item(
 
 
 def _query_items(
-    table, start_date: date | None = None, end_date: date | None = None, store: str | None = None
+    table,
+    user_id: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    store: str | None = None,
 ) -> list[dict]:
     low = start_date.isoformat() if start_date else "0000-00-00"
     # "~" sorts after any hex id char, so the end date is inclusive.
     high = f"{end_date.isoformat()}#~" if end_date else "9999-99-99#~"
     kwargs: dict[str, Any] = {
         "IndexName": _GSI,
-        "KeyConditionExpression": Key("gsi1pk").eq(_GSI_PK) & Key("gsi1sk").between(low, high),
+        "KeyConditionExpression": Key("gsi1pk").eq(_user_pk(user_id))
+        & Key("gsi1sk").between(low, high),
         "ScanIndexForward": False,
     }
     if store:
@@ -99,18 +109,19 @@ def _query_items(
 
 
 def list_expenses(
-    table, start_date: date | None, end_date: date | None, store: str | None
+    table, user_id: str, start_date: date | None, end_date: date | None, store: str | None
 ) -> list[ExpenseResponse]:
-    return [_to_response(i) for i in _query_items(table, start_date, end_date, store)]
+    return [_to_response(i) for i in _query_items(table, user_id, start_date, end_date, store)]
 
 
-def get_expense(table, expense_id: str) -> ExpenseResponse | None:
-    item = table.get_item(Key=_pk(expense_id)).get("Item")
+def get_expense(table, user_id: str, expense_id: str) -> ExpenseResponse | None:
+    item = table.get_item(Key=_key(user_id, expense_id)).get("Item")
     return _to_response(item) if item else None
 
 
-def create_expense(table, payload: ExpenseCreate) -> ExpenseResponse:
+def create_expense(table, user_id: str, payload: ExpenseCreate) -> ExpenseResponse:
     item = _build_item(
+        user_id=user_id,
         expense_id=uuid.uuid4().hex,
         day=payload.date,
         store=payload.store,
@@ -124,15 +135,18 @@ def create_expense(table, payload: ExpenseCreate) -> ExpenseResponse:
     return _to_response(item)
 
 
-def update_expense(table, expense_id: str, payload: ExpenseUpdate) -> ExpenseResponse | None:
+def update_expense(
+    table, user_id: str, expense_id: str, payload: ExpenseUpdate
+) -> ExpenseResponse | None:
     # Read-modify-write: the date is part of the GSI sort key, so it must be rebuilt.
-    current = table.get_item(Key=_pk(expense_id)).get("Item")
+    current = table.get_item(Key=_key(user_id, expense_id)).get("Item")
     if not current:
         return None
     current = _from_dynamo(current)
 
     changes = payload.model_dump(exclude_none=True)
     item = _build_item(
+        user_id=user_id,
         expense_id=expense_id,
         day=changes.get("date", date.fromisoformat(current["date"])),
         store=changes.get("store", current["store"]),
@@ -151,9 +165,9 @@ def update_expense(table, expense_id: str, payload: ExpenseUpdate) -> ExpenseRes
     return _to_response(item)
 
 
-def delete_expense(table, expense_id: str) -> bool:
+def delete_expense(table, user_id: str, expense_id: str) -> bool:
     try:
-        table.delete_item(Key=_pk(expense_id), ConditionExpression=Attr("pk").exists())
+        table.delete_item(Key=_key(user_id, expense_id), ConditionExpression=Attr("pk").exists())
     except ClientError as exc:
         if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
             return False
@@ -161,10 +175,10 @@ def delete_expense(table, expense_id: str) -> bool:
     return True
 
 
-def monthly_summary(table) -> list[MonthlySummary]:
+def monthly_summary(table, user_id: str) -> list[MonthlySummary]:
     # Personal-scale data: aggregate in Python instead of maintaining counters.
     totals: dict[tuple[int, int], list] = {}
-    for item in _query_items(table):
+    for item in _query_items(table, user_id):
         year, month = int(item["date"][:4]), int(item["date"][5:7])
         bucket = totals.setdefault((year, month), [0.0, 0])
         bucket[0] += _from_dynamo(item["total"])

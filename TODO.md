@@ -24,9 +24,9 @@ Target flow: frontend -> backend (presigned URL) -> S3 -> SQS -> parser (ECS) ->
 9. [ ] ADR for the upload pipeline (presigned URL, S3 -> SQS direct, DLQ, parser as a queue consumer)
 
 ## Then: auth and hardening
-- [ ] Frontend: sign-in page
-- [ ] Backend: authorization (and tag receipts/expenses with the user)
-- [ ] Integrate auth and verify frontend <-> backend end to end
+- [x] Frontend: sign-in page, Backend: JWT authorization, expenses scoped per user (ADR-009; code and tests done)
+- [ ] Deploy auth: `terraform apply`, wipe old table items, create the Cognito user, verify end to end
+- [ ] Tag receipts with the user (receipt keys `receipts/<sub>/...`, see plan 1)
 - [ ] Add a load balancer (stable DNS, TLS, health checks) and drop the IP allow-list
 - [ ] ECS deployment circuit breaker with rollback; `/health` curl check after `services-stable`
 - [ ] `.gitignore`: add `*.tfstate*`

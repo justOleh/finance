@@ -1,6 +1,6 @@
 ADR-003: Store expenses in DynamoDB (single table with one GSI)
 
-**Status** Accepted
+**Status** Accepted (key layout superseded by [ADR-009](ADR-009-cognito-authentication.md))
 **Date** 2026-11-08
 
 ## Context

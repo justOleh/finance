@@ -71,6 +71,13 @@ module "ecr" {
   tags = local.common_tags
 }
 
+module "cognito" {
+  source = "./cognito"
+
+  name_prefix = local.name_prefix
+  tags        = local.common_tags
+}
+
 module "backend_ecs" {
   source = "./ecs"
 
@@ -86,6 +93,9 @@ module "backend_ecs" {
     DYNAMODB_TABLE_NAME = module.dynamodb_table.table_names["app"]
     # Browser origin allowed by CORS: the S3 website hosting the frontend.
     CORS_ORIGINS = module.frontend_bucket.website_urls["app"]
+    # The backend verifies access tokens issued by this pool/client.
+    COGNITO_USER_POOL_ID = module.cognito.user_pool_id
+    COGNITO_CLIENT_ID    = module.cognito.client_id
   }
 
   tags = local.common_tags

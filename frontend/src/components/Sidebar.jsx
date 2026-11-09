@@ -5,7 +5,9 @@ import {
   PlusCircle,
   Camera,
   TrendingUp,
+  LogOut,
 } from 'lucide-react'
+import { useAuth } from '../AuthContext'
 
 const links = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Панель' },
@@ -15,6 +17,8 @@ const links = [
 ]
 
 export default function Sidebar() {
+  const { email, authEnabled, logout } = useAuth()
+
   return (
     <>
       {/* Desktop sidebar */}
@@ -43,7 +47,21 @@ export default function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-3">
+          {authEnabled && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-400 text-xs truncate" title={email}>{email}</span>
+              <button
+                type="button"
+                onClick={logout}
+                className="text-slate-400 hover:text-white"
+                aria-label="Вийти"
+                title="Вийти"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2 text-slate-500 text-xs">
             <TrendingUp size={14} />
             <span>Контролюй кожну гривню</span>
@@ -70,6 +88,16 @@ export default function Sidebar() {
               <span className="text-[10px] font-medium">{label}</span>
             </NavLink>
           ))}
+          {authEnabled && (
+            <button
+              type="button"
+              onClick={logout}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 min-w-[60px] rounded-xl text-slate-400 active:bg-slate-800"
+            >
+              <LogOut size={20} />
+              <span className="text-[10px] font-medium">Вийти</span>
+            </button>
+          )}
         </div>
       </nav>
     </>

@@ -38,7 +38,8 @@ Upload flow:
 | Presigned upload endpoint, S3 receipts bucket + CORS | Planned |
 | S3 → SQS event notification, DLQ | Planned |
 | Receipt parser as SQS consumer on ECS | Planned (today it is a FastAPI service run locally) |
-| Authentication, load balancer | Planned |
+| Authentication (Cognito login page, JWT-verified API, per-user data) | Implemented, not deployed yet (see [ADR-009](docs/architecture/ADRs/ADR-009-cognito-authentication.md)) |
+| HTTPS / load balancer | Planned |
 
 Progress and open work are tracked in [TODO.md](TODO.md); design decisions in
 [docs/architecture/ADRs](docs/architecture/ADRs).
@@ -130,6 +131,23 @@ different values.
 
 `BACKEND_PORT`, `RECEIPT_PARSER_PORT`, and `FRONTEND_PORT` are required —
 `deploy.sh` exits with an error if any of them is missing from the env file.
+
+### Authentication (Cognito)
+
+AWS deploys create a Cognito user pool; self-sign-up is off, so create your user
+once after `./deploy.sh --env aws` (`terraform output` shows the pool id):
+
+```bash
+POOL=$(terraform -chdir=terraform output -raw cognito_user_pool_id)
+aws cognito-idp admin-create-user --user-pool-id "$POOL" --username you@example.com \
+    --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true \
+    --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username you@example.com \
+    --password '<12+ chars, upper, lower, digit>' --permanent
+```
+
+The local docker stack runs without login (`AUTH_DISABLED=true` in
+[envs/local.env](envs/local.env); the backend acts as the user `local`).
 
 Two env files ship with the repo:
 

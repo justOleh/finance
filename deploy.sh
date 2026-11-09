@@ -149,7 +149,8 @@ deploy_aws() {
     local tf_dir="${SCRIPT_DIR}/terraform"
     export AWS_REGION="$region" AWS_DEFAULT_REGION="$region"
 
-    # The API has no auth yet: only your current public IP may reach it.
+    # The API is plain HTTP (no TLS yet, see ADR-009), so as a second layer only your
+    # current public IP may reach it, on top of Cognito token checks.
     local my_cidr
     my_cidr="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')/32"
     echo ">> Backend will only accept connections from ${my_cidr}"
@@ -222,13 +223,18 @@ deploy_aws() {
     }
 
     deploy_frontend() {
-        local url bucket
+        local url bucket pool_id client_id
         url="$(backend_url)"
+        pool_id="$(tf_output cognito_user_pool_id)"
+        client_id="$(tf_output cognito_client_id)"
         echo ">> Building frontend against backend ${url}..."
         (
             cd "${SCRIPT_DIR}/frontend"
             npm install
-            VITE_BACKEND_URL="$url" npm run build
+            VITE_BACKEND_URL="$url" \
+                VITE_COGNITO_USER_POOL_ID="$pool_id" \
+                VITE_COGNITO_CLIENT_ID="$client_id" \
+                npm run build
         )
 
         echo ">> Uploading frontend build to S3..."

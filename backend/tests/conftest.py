@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from moto import mock_aws
 
+from app.core.auth import get_current_user
 from app.db.dynamodb import get_table
 from app.main import app
 
@@ -50,7 +51,22 @@ def table(fake_aws_env):
 
 @pytest.fixture
 def client(table):
+    """TestClient signed in as "user-a" (token verification is covered in test_auth.py)."""
     app.dependency_overrides[get_table] = lambda: table
+    app.dependency_overrides[get_current_user] = lambda: "user-a"
     with TestClient(app) as c:
         yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_as(table):
+    """Factory: client_as("user-b") returns a TestClient acting as that user."""
+    app.dependency_overrides[get_table] = lambda: table
+
+    def make_client(user_id: str) -> TestClient:
+        app.dependency_overrides[get_current_user] = lambda: user_id
+        return TestClient(app)
+
+    yield make_client
     app.dependency_overrides.clear()

@@ -2,13 +2,14 @@ import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from app.core.auth import get_current_user
 from app.db.dynamodb import get_table
 from app.schemas import ExpenseCreate, ExpenseResponse, ReceiptDraftResponse
 from app.services import expense_service, receipt_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/receipts", tags=["receipts"])
+router = APIRouter(prefix="/receipts", tags=["receipts"], dependencies=[Depends(get_current_user)])
 
 
 def _validate_and_prepare_upload(file: UploadFile):
@@ -65,7 +66,11 @@ def parse_receipt(file: UploadFile = File(...)):
 
 
 @router.post("/upload", response_model=ExpenseResponse, status_code=201)
-def upload_receipt(file: UploadFile = File(...), table=Depends(get_table)):
+def upload_receipt(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+    table=Depends(get_table),
+):
     filename, content_type, image_bytes, save_path = _validate_and_prepare_upload(file)
 
     parsed: dict = {}
@@ -82,4 +87,4 @@ def upload_receipt(file: UploadFile = File(...), table=Depends(get_table)):
         notes=str(parsed.get("raw_text", ""))[:500] if parsed.get("raw_text") else None,
         receipt_image_path=save_path,
     )
-    return expense_service.create_expense(table, expense)
+    return expense_service.create_expense(table, user_id, expense)

@@ -78,3 +78,18 @@ def test_date_range_filter_and_update_moves_date(client):
     assert client.get("/expenses/?start_date=2024-01-01&end_date=2024-01-31").json() == []
     newest_first = client.get("/expenses/").json()
     assert [e["date"] for e in newest_first] == ["2024-05-05", "2024-03-01"]
+
+
+def test_user_cannot_access_another_users_expense(client_as):
+    alice = client_as("alice")
+    created = alice.post("/expenses/", json=SAMPLE_EXPENSE).json()
+
+    bob = client_as("bob")
+    assert bob.get(f"/expenses/{created['id']}").status_code == 404
+    assert bob.put(f"/expenses/{created['id']}", json={"store": "x"}).status_code == 404
+    assert bob.delete(f"/expenses/{created['id']}").status_code == 404
+    assert bob.get("/expenses/").json() == []
+    assert bob.get("/expenses/monthly-summary").json() == []
+
+    alice = client_as("alice")
+    assert alice.get(f"/expenses/{created['id']}").status_code == 200

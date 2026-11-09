@@ -42,3 +42,14 @@ output "backend_role_arn" {
   description = "ARN of the IAM role the backend assumes to access DynamoDB."
   value       = module.backend_iam.backend_role_arn
 }
+
+
+output "cognito_user_pool_id" {
+  description = "Cognito user pool id."
+  value       = module.cognito.user_pool_id
+}
+
+output "cognito_client_id" {
+  description = "Cognito app client id used by the frontend."
+  value       = module.cognito.client_id
+}
