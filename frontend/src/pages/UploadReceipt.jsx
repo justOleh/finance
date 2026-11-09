@@ -115,7 +115,7 @@ export default function UploadReceipt() {
       const upload = await requestReceiptUpload(contentTypeOf(file))
       await uploadToS3(upload, file)
 
-      // The worker parses asynchronously: poll until it finishes (or fails / times out).
+      // The parse Lambda works asynchronously (ADR-013): poll until it finishes (or fails / times out).
       const deadline = Date.now() + POLL_TIMEOUT_MS
       let receipt = await getReceipt(upload.receipt_id)
       while (receipt.status === 'UPLOADING') {
@@ -272,6 +272,11 @@ export default function UploadReceipt() {
               </div>
             )}
           </div>
+
+          <p className="text-slate-500 text-xs">
+            Сфотографуйте чек повністю: позиції та підсумкова сума мають бути видні. Якщо їх не
+            видно, розпізнавання не вдасться.
+          </p>
 
           {error && (
             <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-xl px-4 py-3">
