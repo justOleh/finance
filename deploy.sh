@@ -6,7 +6,7 @@
 #   ./deploy.sh --env local --down       # stop and remove containers
 #   ./deploy.sh --env local --logs       # follow container logs
 #
-# AWS (cheap mode: Fargate task with public IP, no ALB; API restricted to your IP):
+# AWS (cheap mode: Fargate task with public IP, no ALB; API is public, Cognito-authenticated):
 #   Registry  -> terraform apply -target=module.ecr (ECR outlives --down)
 #   Infra     -> terraform apply (S3, DynamoDB, IAM, ECS)
 #   Backend   -> docker build + push to ECR + ECS force-new-deployment
@@ -27,7 +27,7 @@ ACTION="up"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --env <local|prod> [options]
+Usage: $(basename "$0") --env <local|aws|prod> [options]
 
 Options:
   --env <name>   Target environment (local, aws|prod)
@@ -74,75 +74,75 @@ if [[ -z "$ENV_NAME" ]]; then
     exit 1
 fi
 
-# # Resolve `docker compose` (v2) vs legacy `docker-compose` (v1).
-# if docker compose version >/dev/null 2>&1; then
-#     COMPOSE=(docker compose)
-# elif command -v docker-compose >/dev/null 2>&1; then
-#     COMPOSE=(docker-compose)
-# else
-#     echo "Error: neither 'docker compose' nor 'docker-compose' is available" >&2
-#     exit 1
-# fi
+# Resolve `docker compose` (v2) vs legacy `docker-compose` (v1).
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+else
+    echo "Error: neither 'docker compose' nor 'docker-compose' is available" >&2
+    exit 1
+fi
 
-# deploy_local() {
-#     if [[ ! -f "$COMPOSE_FILE" ]]; then
-#         echo "Error: compose file not found at $COMPOSE_FILE" >&2
-#         exit 1
-#     fi
+deploy_local() {
+    if [[ ! -f "$COMPOSE_FILE" ]]; then
+        echo "Error: compose file not found at $COMPOSE_FILE" >&2
+        exit 1
+    fi
 
-#     local env_file="${ENVS_DIR}/local.env"
-#     if [[ ! -f "$env_file" ]]; then
-#         echo "Error: env file not found at $env_file" >&2
-#         exit 1
-#     fi
+    local env_file="${ENVS_DIR}/local.env"
+    if [[ ! -f "$env_file" ]]; then
+        echo "Error: env file not found at $env_file" >&2
+        exit 1
+    fi
 
-#     # --env-file makes ${VAR} in docker-compose.yml resolve against local.env.
-#     # (Per-service `env_file:` blocks in the compose file additionally inject
-#     #  the same vars into each container's runtime environment.)
-#     local -a compose_cmd=("${COMPOSE[@]}" --env-file "$env_file" -f "$COMPOSE_FILE")
+    # --env-file makes ${VAR} in docker-compose.yml resolve against local.env.
+    # (Per-service `env_file:` blocks in the compose file additionally inject
+    #  the same vars into each container's runtime environment.)
+    local -a compose_cmd=("${COMPOSE[@]}" --env-file "$env_file" -f "$COMPOSE_FILE")
 
-#     # Also load the vars into this shell so the echo below can use them.
-#     set -a
-#     # shellcheck disable=SC1090
-#     source "$env_file"
-#     set +a
+    # Also load the vars into this shell so the echo below can use them.
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
 
-#     # Required vars — fail loudly if the env file is missing any of these
-#     # rather than silently falling back to hardcoded ports.
-#     local var
-#     for var in BACKEND_PORT RECEIPT_PARSER_PORT FRONTEND_PORT; do
-#         if [[ -z "${!var:-}" ]]; then
-#             echo "Error: $var is not set in $env_file" >&2
-#             exit 1
-#         fi
-#     done
+    # Required vars — fail loudly if the env file is missing any of these
+    # rather than silently falling back to hardcoded ports.
+    local var
+    for var in BACKEND_PORT RECEIPT_PARSER_PORT FRONTEND_PORT; do
+        if [[ -z "${!var:-}" ]]; then
+            echo "Error: $var is not set in $env_file" >&2
+            exit 1
+        fi
+    done
 
-#     case "$ACTION" in
-#         up)
-#             echo ">> Building and starting local containers via docker compose..."
-#             "${compose_cmd[@]}" up --build -d
-#             echo ">> Services:"
-#             "${compose_cmd[@]}" ps
-#             cat <<EOF
+    case "$ACTION" in
+        up)
+            echo ">> Building and starting local containers via docker compose..."
+            "${compose_cmd[@]}" up --build -d
+            echo ">> Services:"
+            "${compose_cmd[@]}" ps
+            cat <<EOF
 
-# Local stack is up:
-#   frontend        http://localhost:${FRONTEND_PORT}
-#   backend API     http://localhost:${BACKEND_PORT}
-#   receipt parser  http://localhost:${RECEIPT_PARSER_PORT}
+Local stack is up:
+  frontend        http://localhost:${FRONTEND_PORT}
+  backend API     http://localhost:${BACKEND_PORT}
+  receipt parser  http://localhost:${RECEIPT_PARSER_PORT}
 
-# Tail logs:  ./$(basename "$0") --env local --logs
-# Stop:       ./$(basename "$0") --env local --down
-# EOF
-#             ;;
-#         down)
-#             echo ">> Stopping local containers..."
-#             "${compose_cmd[@]}" down
-#             ;;
-#         logs)
-#             "${compose_cmd[@]}" logs -f
-#             ;;
-#     esac
-# }
+Tail logs:  ./$(basename "$0") --env local --logs
+Stop:       ./$(basename "$0") --env local --down
+EOF
+            ;;
+        down)
+            echo ">> Stopping local containers..."
+            "${compose_cmd[@]}" down
+            ;;
+        logs)
+            "${compose_cmd[@]}" logs -f
+            ;;
+    esac
+}
 
 deploy_aws() {
     local region="${AWS_REGION:-eu-west-1}"
@@ -291,7 +291,7 @@ case "$ENV_NAME" in
     prod|aws)
         case "$ACTION" in
             up)   deploy_aws ;;
-            down) destroy_aws ;;
+            down|destroy) destroy_aws ;;
             logs)
                 echo "Error: --logs is not supported for aws" >&2
                 exit 1
