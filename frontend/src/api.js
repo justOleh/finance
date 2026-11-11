@@ -35,8 +35,12 @@ export const getExpenses = (params = {}) =>
 export const getMonthlySummary = () =>
   api.get('/expenses/monthly-summary').then((r) => r.data)
 
-export const createExpense = (payload) =>
-  api.post('/expenses/', payload).then((r) => r.data)
+// With an idempotency key the backend returns the first expense when the same request is
+// repeated (double click, retry), instead of creating a second one (ADR-014).
+export const createExpense = (payload, idempotencyKey) =>
+  api
+    .post('/expenses/', payload, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined)
+    .then((r) => r.data)
 
 export const updateExpense = (id, payload) =>
   api.put(`/expenses/${id}`, payload).then((r) => r.data)

@@ -6,6 +6,9 @@ COPY . .
 # VITE_* build args are baked into the static bundle by `npm run build`.
 ARG VITE_BACKEND_URL=""
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+# Empty = the Chat page says it is not configured (the local stack has no agent).
+ARG VITE_AGENT_URL=""
+ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ARG VITE_COGNITO_USER_POOL_ID=""
 ARG VITE_COGNITO_CLIENT_ID=""
 ENV VITE_COGNITO_USER_POOL_ID=$VITE_COGNITO_USER_POOL_ID \

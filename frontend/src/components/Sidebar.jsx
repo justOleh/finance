@@ -4,6 +4,7 @@ import {
   CalendarDays,
   PlusCircle,
   Camera,
+  MessageCircle,
   TrendingUp,
   LogOut,
 } from 'lucide-react'
@@ -14,6 +15,7 @@ const links = [
   { to: '/monthly', icon: CalendarDays, label: 'Місяць' },
   { to: '/add', icon: PlusCircle, label: 'Додати' },
   { to: '/upload', icon: Camera, label: 'Чек' },
+  { to: '/chat', icon: MessageCircle, label: 'Чат' },
 ]
 
 export default function Sidebar() {

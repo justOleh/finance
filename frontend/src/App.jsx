@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import MonthlyView from './pages/MonthlyView'
 import AddExpense from './pages/AddExpense'
 import UploadReceipt from './pages/UploadReceipt'
+import Chat from './pages/Chat'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="monthly" element={<MonthlyView />} />
               <Route path="add" element={<AddExpense />} />
               <Route path="upload" element={<UploadReceipt />} />
+              <Route path="chat" element={<Chat />} />
             </Route>
           </Route>
         </Routes>
