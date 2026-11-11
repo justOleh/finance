@@ -5,4 +5,4 @@ repos:
         name: ruff check --fix + format
         entry: scripts/ruff-fix.sh
         language: system
-        files: ^(backend|lambdas)/.*\.py$
+        files: ^(backend|lambdas|agent)/.*\.py$
