@@ -44,4 +44,4 @@ select = ["E", "W", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI declares dependencies/params as argument defaults (B008 false positives)
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File", "fastapi.Header"]

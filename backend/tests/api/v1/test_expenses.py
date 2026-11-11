@@ -93,3 +93,46 @@ def test_user_cannot_access_another_users_expense(client_as):
 
     alice = client_as("alice")
     assert alice.get(f"/expenses/{created['id']}").status_code == 200
+
+
+def test_summary_endpoint_groups_by_store(client):
+    client.post("/expenses/", json=SAMPLE_EXPENSE)
+    client.post("/expenses/", json={**SAMPLE_EXPENSE, "store": "Other Shop", "total": 5.00})
+
+    resp = client.get("/expenses/summary?start_date=2024-01-01&end_date=2024-01-31&group_by=store")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert (body["total"], body["count"]) == (11.48, 2)
+    assert [g["key"] for g in body["groups"]] == ["Super Mart", "Other Shop"]
+    assert client.get("/expenses/summary?group_by=items").status_code == 422
+
+
+def test_summary_is_per_user(client_as):
+    client_as("alice").post("/expenses/", json=SAMPLE_EXPENSE)
+
+    assert client_as("bob").get("/expenses/summary").json()["count"] == 0
+
+
+def test_idempotency_key_makes_a_repeated_create_return_the_same_expense(client):
+    headers = {"Idempotency-Key": "chat-draft-0001"}
+
+    first = client.post("/expenses/", json=SAMPLE_EXPENSE, headers=headers)
+    again = client.post("/expenses/", json=SAMPLE_EXPENSE, headers=headers)
+
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert again.json()["id"] == first.json()["id"]
+    assert len(client.get("/expenses/").json()) == 1
+
+
+def test_create_without_a_key_is_not_deduplicated(client):
+    client.post("/expenses/", json=SAMPLE_EXPENSE)
+    client.post("/expenses/", json=SAMPLE_EXPENSE)
+
+    assert len(client.get("/expenses/").json()) == 2
+
+
+def test_create_rejects_items_without_name_or_price(client):
+    bad = {**SAMPLE_EXPENSE, "items": [{"title": "Milk"}]}
+
+    assert client.post("/expenses/", json=bad).status_code == 422

@@ -51,7 +51,7 @@ def test_create_then_get_round_trips_all_fields(table):
     assert fetched == created
     assert fetched.store == "Super Mart"
     assert fetched.total == 6.48
-    assert fetched.items == [{"name": "Milk", "price": 2.99, "qty": 2}]
+    assert [i.model_dump() for i in fetched.items] == [{"name": "Milk", "price": 2.99, "qty": 2}]
     assert fetched.date == date(2024, 1, 15)
 
 
@@ -279,3 +279,95 @@ def test_get_table_builds_table_resource_for_configured_name(table, monkeypatch)
         assert dynamodb.get_table() is resolved  # cached
     finally:
         dynamodb.get_table.cache_clear()
+
+
+# --- typed items (ADR-014) --------------------------------------------------
+
+
+def test_items_written_before_typing_are_still_readable(table):
+    created = svc.create_expense(table, U, make())
+    # An item as the old parser stored it: `item_price` instead of `price`, and no name.
+    table.update_item(
+        Key={"pk": f"USER#{U}", "sk": f"EXPENSE#{created.id}"},
+        UpdateExpression="SET #i = :i",
+        ExpressionAttributeNames={"#i": "items"},
+        ExpressionAttributeValues={":i": [{"item_price": Decimal("4.5"), "unit": "kg"}]},
+    )
+
+    item = svc.get_expense(table, U, created.id).items[0]
+
+    assert (item.name, item.price) == ("", 4.5)
+    assert item.model_dump()["unit"] == "kg"
+
+
+def test_new_items_need_a_name_and_a_price():
+    with pytest.raises(ValueError):
+        make(items=[{"price": 1.0}])
+    with pytest.raises(ValueError):
+        make(items=[{"name": "Milk"}])
+
+
+# --- idempotent create (ADR-014) --------------------------------------------
+
+
+def test_create_once_returns_the_first_expense_on_a_repeated_key(table):
+    first, created = svc.create_expense_once(table, U, make(store="First"), "key-12345")
+    again, created_again = svc.create_expense_once(table, U, make(store="Second"), "key-12345")
+
+    assert (created, created_again) == (True, False)
+    assert again == first
+    assert len(svc.list_expenses(table, U, None, None, None)) == 1
+
+
+def test_create_once_keys_are_per_user(table):
+    mine, _ = svc.create_expense_once(table, U, make(), "key-12345")
+    theirs, created = svc.create_expense_once(table, OTHER, make(), "key-12345")
+
+    assert created is True
+    assert mine.id != theirs.id
+
+
+# --- spending summary (ADR-014) ---------------------------------------------
+
+
+def _seed_summary(table):
+    svc.create_expense(table, U, make(store="Silpo", date=date(2024, 1, 5), total=0.1))
+    svc.create_expense(table, U, make(store="SILPO", date=date(2024, 1, 20), total=0.2))
+    svc.create_expense(table, U, make(store="ATB", date=date(2024, 2, 10), total=10.10))
+    svc.create_expense(table, OTHER, make(store="Silpo", date=date(2024, 1, 7), total=99))
+
+
+def test_summary_totals_a_date_range_without_float_drift(table):
+    _seed_summary(table)
+
+    summary = svc.spending_summary(table, U, date(2024, 1, 1), date(2024, 1, 31))
+
+    assert (summary.total, summary.count, summary.groups) == (0.3, 2, [])
+
+
+def test_summary_groups_by_store_case_insensitively_largest_first(table):
+    _seed_summary(table)
+
+    summary = svc.spending_summary(table, U, None, None, group_by="store")
+
+    assert [(g.key, g.total, g.count) for g in summary.groups] == [
+        ("ATB", 10.1, 1),
+        ("SILPO", 0.3, 2),  # label = spelling of the newest expense
+    ]
+    assert summary.total == 10.4
+
+
+def test_summary_groups_by_month_and_filters_by_store(table):
+    _seed_summary(table)
+
+    by_month = svc.spending_summary(table, U, None, None, group_by="month")
+    silpo = svc.spending_summary(table, U, None, None, store="silpo")
+
+    assert [(g.key, g.total) for g in by_month.groups] == [("2024-02", 10.1), ("2024-01", 0.3)]
+    assert (silpo.total, silpo.count) == (0.3, 2)
+
+
+def test_summary_of_nothing_is_zero(table):
+    summary = svc.spending_summary(table, U, None, None, group_by="store")
+
+    assert (summary.total, summary.count, summary.groups) == (0.0, 0, [])

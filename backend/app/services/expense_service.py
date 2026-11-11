@@ -1,5 +1,7 @@
+import hashlib
 import json
 import uuid
+from collections import defaultdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -7,7 +9,14 @@ from typing import Any
 from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
-from app.schemas import ExpenseCreate, ExpenseResponse, ExpenseUpdate, MonthlySummary
+from app.schemas import (
+    ExpenseCreate,
+    ExpenseResponse,
+    ExpenseUpdate,
+    MonthlySummary,
+    SpendingSummary,
+    SummaryGroup,
+)
 
 # Single-table design (see terraform/main.tf and ADR-009). Every key contains the owner's
 # Cognito `sub`, so a user can only ever address their own items:
@@ -119,20 +128,51 @@ def get_expense(table, user_id: str, expense_id: str) -> ExpenseResponse | None:
     return _to_response(item) if item else None
 
 
-def create_expense(table, user_id: str, payload: ExpenseCreate) -> ExpenseResponse:
-    item = _build_item(
+def _idempotent_id(user_id: str, idempotency_key: str) -> str:
+    """Same user + same key always gives the same expense id (32 hex chars, like uuid4().hex)."""
+    return hashlib.sha256(f"{user_id}:{idempotency_key}".encode()).hexdigest()[:32]
+
+
+def _new_item(user_id: str, expense_id: str, payload: ExpenseCreate) -> dict:
+    return _build_item(
         user_id=user_id,
-        expense_id=uuid.uuid4().hex,
+        expense_id=expense_id,
         day=payload.date,
         store=payload.store,
-        items=payload.items,
+        # Typed items (ADR-014) go back to plain dicts for DynamoDB.
+        items=[i.model_dump() for i in payload.items],
         total=payload.total,
         notes=payload.notes,
         receipt_image_path=payload.receipt_image_path,
         created_at=datetime.now(UTC).isoformat(),
     )
+
+
+def create_expense(table, user_id: str, payload: ExpenseCreate) -> ExpenseResponse:
+    item = _new_item(user_id, uuid.uuid4().hex, payload)
     table.put_item(Item=item)
     return _to_response(item)
+
+
+def create_expense_once(
+    table, user_id: str, payload: ExpenseCreate, idempotency_key: str
+) -> tuple[ExpenseResponse, bool]:
+    """Create an expense at most once per (user, key). Returns (expense, created).
+
+    The id is derived from the key and the write is conditional, so a retry (double click,
+    network retry, an agent repeating itself) returns the first expense instead of creating a
+    second one: created is then False. See ADR-014.
+    """
+    expense_id = _idempotent_id(user_id, idempotency_key)
+    item = _new_item(user_id, expense_id, payload)
+    try:
+        table.put_item(Item=item, ConditionExpression=Attr("pk").not_exists())
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+        existing = table.get_item(Key=_key(user_id, expense_id), ConsistentRead=True)["Item"]
+        return _to_response(existing), False
+    return _to_response(item), True
 
 
 def update_expense(
@@ -144,6 +184,7 @@ def update_expense(
         return None
     current = _from_dynamo(current)
 
+    # model_dump turns the typed items back into plain dicts for DynamoDB.
     changes = payload.model_dump(exclude_none=True)
     item = _build_item(
         user_id=user_id,
@@ -187,3 +228,47 @@ def monthly_summary(table, user_id: str) -> list[MonthlySummary]:
         MonthlySummary(year=y, month=m, total=round(t, 2), count=c)
         for (y, m), (t, c) in sorted(totals.items())
     ]
+
+
+def spending_summary(
+    table,
+    user_id: str,
+    start_date: date | None,
+    end_date: date | None,
+    group_by: str = "none",
+    store: str | None = None,
+) -> SpendingSummary:
+    """Total and count for a date range, optionally grouped by store or by month.
+
+    Sums use Decimal (the type DynamoDB returns), so there is no float drift.
+    """
+    total = Decimal("0")
+    count = 0
+    groups: dict[str, list] = defaultdict(lambda: [Decimal("0"), 0])
+    labels: dict[str, str] = {}
+    for item in _query_items(table, user_id, start_date, end_date, store):
+        amount = Decimal(str(item["total"]))
+        total += amount
+        count += 1
+        if group_by == "store":
+            # Group case-insensitively, show the first spelling seen (the newest expense).
+            key = item.get("store_lower") or item["store"].lower()
+            labels.setdefault(key, item["store"])
+        elif group_by == "month":
+            key = item["date"][:7]
+        else:
+            continue
+        groups[key][0] += amount
+        groups[key][1] += 1
+
+    return SpendingSummary(
+        start_date=start_date,
+        end_date=end_date,
+        group_by=group_by,
+        total=float(round(total, 2)),
+        count=count,
+        groups=[
+            SummaryGroup(key=labels.get(key, key), total=float(round(amount, 2)), count=n)
+            for key, (amount, n) in sorted(groups.items(), key=lambda kv: (-kv[1][0], kv[0]))
+        ],
+    )
