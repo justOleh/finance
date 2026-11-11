@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 
@@ -22,6 +22,12 @@ provider "aws" {
 
 locals {
   name_prefix = "${var.project}-${var.env}-${var.aws_account_id}"
+
+  cognito_issuer = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.user_pool_id}"
+
+  # Browser origins allowed to call the API and to POST receipts to S3: the CloudFront site,
+  # plus anything listed for local frontend development (for example http://localhost:5173).
+  browser_origins = concat([module.cdn.url], var.extra_cors_origins)
   common_tags = {
     Project     = var.project
     Environment = var.env
@@ -34,16 +40,39 @@ module "frontend_bucket" {
   source = "./storage/s3"
 
   buckets = {
+    # Private: only CloudFront reads it (module.cdn adds the bucket policy). ADR-014.
     app = {
-      name            = "${local.name_prefix}-frontend"
-      versioning      = true
-      website_hosting = true
-      index_document  = "index.html"
-      error_document  = "index.html"
-      block_public    = false
-      force_destroy   = var.force_destroy_buckets
+      name          = "${local.name_prefix}-frontend"
+      versioning    = true
+      force_destroy = var.force_destroy_buckets
     }
   }
+
+  tags = local.common_tags
+}
+
+# The frontend bucket used to be a public S3 website (ADR-007). Its public-read policy and website
+# configuration were resources of the s3 module, which no longer has them (ADR-014).
+# `destroy = false` makes Terraform forget the old policy instead of deleting it: module.cdn then
+# overwrites it with the CloudFront-only policy. A delete could run after that write and remove
+# the new policy, because Terraform does not order the two. (A `moved` block would also work, but
+# it breaks the `-target=module.ecr` step of deploy.sh.) Safe to delete after the first apply.
+removed {
+  from = module.frontend_bucket.aws_s3_bucket_policy.public_read
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+# HTTPS for the site; the S3 website endpoint (HTTP only, public bucket) is gone.
+module "cdn" {
+  source = "./cdn"
+
+  name_prefix                 = local.name_prefix
+  bucket_id                   = module.frontend_bucket.bucket_ids["app"]
+  bucket_arn                  = module.frontend_bucket.bucket_arns["app"]
+  bucket_regional_domain_name = module.frontend_bucket.bucket_regional_domain_names["app"]
 
   tags = local.common_tags
 }
@@ -75,6 +104,10 @@ module "ecr" {
       name         = "${local.name_prefix}-parse-receipt"
       force_delete = true
     }
+    agent = {
+      name         = "${local.name_prefix}-agent"
+      force_delete = true
+    }
   }
 
   tags = local.common_tags
@@ -101,14 +134,70 @@ module "backend_ecs" {
     DYNAMODB_TABLE_NAME = module.dynamodb_table.table_names["app"]
     # Bucket the browser uploads receipts to (presigned POST issued by the backend).
     RECEIPTS_BUCKET = module.receipts_bucket.bucket_ids["receipts"]
-    # Browser origin allowed by CORS: the S3 website hosting the frontend.
-    CORS_ORIGINS = module.frontend_bucket.website_urls["app"]
+    # Browser origins allowed by CORS. API Gateway answers CORS itself (module.backend_api);
+    # this keeps the backend consistent if it is ever called directly.
+    CORS_ORIGINS = join(",", local.browser_origins)
     # The backend verifies access tokens issued by this pool/client.
     COGNITO_USER_POOL_ID = module.cognito.user_pool_id
     COGNITO_CLIENT_ID    = module.cognito.client_id
   }
 
   tags = local.common_tags
+}
+
+# --- HTTPS front door and chat agent (ADR-014) ---------------------------------
+# Browser --> HTTP API (TLS, Cognito JWT, throttling) --VPC link--> Cloud Map --> backend task
+# Browser --> AgentCore Runtime (Cognito JWT) --> agent --> the same HTTP API, same token
+
+module "backend_api" {
+  source = "./api_gateway"
+
+  name_prefix               = local.name_prefix
+  vpc_id                    = module.backend_ecs.vpc_id
+  subnet_ids                = module.backend_ecs.subnet_ids
+  backend_security_group_id = module.backend_ecs.security_group_id
+  backend_port              = module.backend_ecs.container_port
+  discovery_service_arn     = module.backend_ecs.discovery_service_arn
+  cognito_issuer            = local.cognito_issuer
+  cognito_client_id         = module.cognito.client_id
+  cors_allowed_origins      = local.browser_origins
+
+  tags = local.common_tags
+}
+
+module "chat_agent" {
+  source = "./agent_runtime"
+
+  name_prefix          = local.name_prefix
+  aws_region           = var.aws_region
+  image_repository_url = module.ecr.repository_urls["agent"]
+  image_repository_arn = module.ecr.repository_arns["agent"]
+  image_tag            = var.agent_image_tag
+  model_id             = var.chat_model_id
+  api_base_url         = module.backend_api.api_url
+  cognito_issuer       = local.cognito_issuer
+  cognito_client_id    = module.cognito.client_id
+
+  tags = local.common_tags
+}
+
+# Optional spend alert for the whole account (the first two budgets are free).
+resource "aws_budgets_budget" "monthly" {
+  count = var.budget_alert_email == "" ? 0 : 1
+
+  name         = "${local.name_prefix}-monthly"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
 }
 
 # --- Receipt pipeline (ADR-010, ADR-013) --------------------------------------
@@ -129,7 +218,7 @@ module "receipts_bucket" {
       name          = "${local.name_prefix}-receipts"
       force_destroy = var.force_destroy_buckets
       # Browsers POST straight to S3, so S3 must allow the frontend origin (CORS).
-      cors_allowed_origins = [module.frontend_bucket.website_urls["app"]]
+      cors_allowed_origins = local.browser_origins
       cors_allowed_methods = ["POST"]
     }
     # PNGs written by the convert-image Lambda. Browsers never touch it (no CORS). The originals

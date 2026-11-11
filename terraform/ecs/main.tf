@@ -1,6 +1,8 @@
 # Backend on ECS Fargate, "cheapest possible" variant:
-#  - default VPC, public subnets, task gets a public IP (no NAT gateway, no ALB)
-#  - inbound port is open to the internet; access control is Cognito JWT checks in the API
+#  - default VPC, public subnets, task gets a public IP (no NAT gateway, no ALB): the IP is only
+#    for outbound calls (ECR, DynamoDB, Cognito JWKS)
+#  - no inbound rule here: the only way in is the API Gateway HTTP API (terraform/api_gateway),
+#    which finds the task through Cloud Map and adds its own ingress rule (ADR-014)
 
 # --- Networking (default VPC) -------------------------------------------------
 data "aws_vpc" "default" {
@@ -21,13 +23,35 @@ resource "aws_security_group" "backend" {
   tags        = var.tags
 }
 
-resource "aws_vpc_security_group_ingress_rule" "api" {
-  security_group_id = aws_security_group.backend.id
-  description       = "Backend API (public, Cognito-authenticated)"
-  ip_protocol       = "tcp"
-  from_port         = var.container_port
-  to_port           = var.container_port
-  cidr_ipv4         = "0.0.0.0/0"
+# --- Service discovery (Cloud Map) --------------------------------------------
+# The task IP changes on every restart (ADR-007). ECS registers each running task here, and API
+# Gateway resolves the current one through the service ARN, so nothing has to know the IP.
+# SRV records carry the port as well as the IP, which is what API Gateway needs.
+# Cost: the private DNS namespace is a Route 53 private hosted zone (about $0.50 per month).
+resource "aws_service_discovery_private_dns_namespace" "this" {
+  name        = "${var.name_prefix}.internal"
+  description = "Private names for my-finance services"
+  vpc         = data.aws_vpc.default.id
+  tags        = var.tags
+}
+
+resource "aws_service_discovery_service" "backend" {
+  name = "backend"
+  tags = var.tags
+
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.this.id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      type = "SRV"
+      ttl  = 10
+    }
+  }
+
+  # No health_check_custom_config: ECS registers a task when it starts and deregisters it when it
+  # stops, which is enough for one task. (An empty block is not stored by the provider and would
+  # force this service to be replaced on every apply.)
 }
 
 # The task must reach ECR (pull image), CloudWatch (logs) and DynamoDB.
@@ -131,5 +155,11 @@ resource "aws_ecs_service" "backend" {
     subnets          = data.aws_subnets.default.ids
     security_groups  = [aws_security_group.backend.id]
     assign_public_ip = true # needed to pull from ECR without a NAT gateway
+  }
+
+  # Register every task (IP + port) in Cloud Map. With awsvpc and SRV records, give the port.
+  service_registries {
+    registry_arn = aws_service_discovery_service.backend.arn
+    port         = var.container_port
   }
 }

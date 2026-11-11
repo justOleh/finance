@@ -4,8 +4,33 @@ output "frontend_bucket" {
 }
 
 output "frontend_hosting_url" {
-  description = "URL to access the frontend S3 bucket hosting the static website."
-  value       = module.frontend_bucket.website_urls["app"]
+  description = "HTTPS URL of the frontend (CloudFront)."
+  value       = module.cdn.url
+}
+
+output "frontend_distribution_id" {
+  description = "CloudFront distribution id (deploy.sh invalidates its cache after an upload)."
+  value       = module.cdn.distribution_id
+}
+
+output "api_url" {
+  description = "HTTPS base URL of the backend API (API Gateway)."
+  value       = module.backend_api.api_url
+}
+
+output "agent_ecr_repository_url" {
+  description = "ECR repository the chat agent image is pushed to."
+  value       = module.ecr.repository_urls["agent"]
+}
+
+output "agent_runtime_id" {
+  description = "AgentCore runtime id of the chat agent."
+  value       = module.chat_agent.runtime_id
+}
+
+output "agent_invoke_url" {
+  description = "URL the chat page POSTs to."
+  value       = module.chat_agent.invoke_url
 }
 
 output "app_table_name" {

@@ -8,10 +8,7 @@ output "bucket_arns" {
   value       = { for k, b in aws_s3_bucket.this : k => b.arn }
 }
 
-output "website_urls" {
-  description = "Map of logical name => website URL, only for buckets with website_hosting enabled."
-  value = {
-    for k, w in aws_s3_bucket_website_configuration.this :
-    k => "http://${w.website_endpoint}"
-  }
+output "bucket_regional_domain_names" {
+  description = "Map of logical name => regional domain name (the origin address for CloudFront)."
+  value       = { for k, b in aws_s3_bucket.this : k => b.bucket_regional_domain_name }
 }

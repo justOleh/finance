@@ -6,13 +6,16 @@
 #   ./deploy.sh --env local --down       # stop and remove containers
 #   ./deploy.sh --env local --logs       # follow container logs
 #
-# AWS (cheap mode: Fargate task with public IP, no ALB; API is public, Cognito-authenticated):
+# AWS (no ALB, no NAT: Fargate task behind an API Gateway HTTP API, frontend behind CloudFront):
 #   Registry  -> terraform apply -target=module.ecr (ECR outlives --down)
-#   Infra     -> terraform apply (S3, SQS, DynamoDB, IAM, ECS, Lambda)
-#   Backend   -> docker build + push to ECR + ECS force-new-deployment
-#   Lambdas   -> docker build + push to ECR + lambda update-function-code
+#   Images    -> docker build + push: backend, the two Lambdas, the chat agent
+#   Infra     -> terraform apply (S3, CloudFront, SQS, DynamoDB, IAM, ECS, HTTP API, Lambda,
+#                AgentCore Runtime). The agent image tag is passed in, so a new build becomes a
+#                new runtime version.
+#   Backend   -> ECS force-new-deployment
+#   Lambdas   -> lambda update-function-code
 #                (convert-image: any format -> PNG, parse-receipt: SQS -> Claude -> DynamoDB)
-#   Frontend  -> npm build with VITE_BACKEND_URL=<task public IP> + s3 sync
+#   Frontend  -> npm build with the API URL and the agent URL + s3 sync + CloudFront invalidation
 #
 # The parse-receipt Lambda needs ANTHROPIC_API_KEY: set it once in the Lambda console
 # (Configuration > Environment variables). Terraform only creates a placeholder and never
@@ -156,6 +159,15 @@ deploy_aws() {
 
     tf_output() { terraform -chdir="$tf_dir" output -raw "$1"; }
 
+    # One tag per agent build: the commit, plus a timestamp when agent/ has uncommitted changes.
+    # AgentCore Runtime only starts a new version when the image reference changes, so a fixed
+    # ":latest" (as used for the backend and the Lambdas) would never roll out new code.
+    local agent_tag
+    agent_tag="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)"
+    if [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain -- agent)" ]]; then
+        agent_tag="${agent_tag}-$(date +%Y%m%d%H%M%S)"
+    fi
+
     # 1. Registry first, so the image exists before the ECS service is created.
     deploy_registry() {
         echo ">> Creating ECR repositories..."
@@ -199,11 +211,29 @@ deploy_aws() {
         push_lambda_image parse_receipt_ecr_repository_url parse_receipt
     }
 
-    # 3. Everything else (buckets, queue, DynamoDB, IAM, ECS, Lambda).
+    # 2c. Build + push the chat agent image (must exist before the runtime is created).
+    #      AgentCore Runtime runs arm64 containers only.
+    push_agent_image() {
+        local repo registry
+        echo ">> Building and pushing the chat agent image (tag ${agent_tag})..."
+        repo="$(tf_output agent_ecr_repository_url)"
+        registry="${repo%%/*}"
+
+        aws ecr get-login-password --region "$region" \
+            | docker login --username AWS --password-stdin "$registry"
+
+        docker build --platform linux/arm64 --provenance=false \
+            -t "${repo}:${agent_tag}" "${SCRIPT_DIR}/agent"
+        docker push "${repo}:${agent_tag}"
+    }
+
+    # 3. Everything else (buckets, CloudFront, queue, DynamoDB, IAM, ECS, HTTP API, Lambda,
+    #    AgentCore Runtime). The first run creates a CloudFront distribution: allow 5-15 minutes.
     deploy_infra() {
-        echo ">> Applying Terraform (buckets, SQS, DynamoDB, IAM, ECS, Lambda)..."
+        echo ">> Applying Terraform (buckets, CloudFront, SQS, DynamoDB, IAM, ECS, HTTP API, Lambda, agent)..."
         terraform -chdir="$tf_dir" apply -auto-approve \
-            -var force_destroy_buckets=true
+            -var force_destroy_buckets=true \
+            -var "agent_image_tag=${agent_tag}"
     }
 
     # 4. Roll the service onto the freshly pushed image (the task definition
@@ -219,37 +249,20 @@ deploy_aws() {
         aws ecs wait services-stable --cluster "$cluster" --services "$service"
     }
 
-    # Fargate task public IPs are dynamic: ask ECS for the task's network
-    # interface, then EC2 for the public IP attached to it.
-    backend_url() {
-        local cluster service task eni ip port
-        cluster="$(tf_output ecs_cluster_name)"
-        service="$(tf_output ecs_backend_service_name)"
-        port="$(tf_output backend_port)"
-        task="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
-            --desired-status RUNNING --query 'taskArns[0]' --output text)"
-        if [[ -z "$task" || "$task" == "None" ]]; then
-            echo "Error: no running backend task found" >&2
-            return 1
-        fi
-        eni="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
-            --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" \
-            --output text)"
-        ip="$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" \
-            --query 'NetworkInterfaces[0].Association.PublicIp' --output text)"
-        echo "http://${ip}:${port}"
-    }
-
+    # The frontend talks to two HTTPS endpoints, both stable across backend restarts:
+    # the API Gateway URL (REST API) and the AgentCore Runtime URL (chat).
     deploy_frontend() {
-        local url bucket pool_id client_id
-        url="$(backend_url)"
+        local api_url agent_url bucket pool_id client_id distribution
+        api_url="$(tf_output api_url)"
+        agent_url="$(tf_output agent_invoke_url)"
         pool_id="$(tf_output cognito_user_pool_id)"
         client_id="$(tf_output cognito_client_id)"
-        echo ">> Building frontend against backend ${url}..."
+        echo ">> Building frontend against API ${api_url}..."
         (
             cd "${SCRIPT_DIR}/frontend"
             npm install
-            VITE_BACKEND_URL="$url" \
+            VITE_BACKEND_URL="$api_url" \
+                VITE_AGENT_URL="$agent_url" \
                 VITE_COGNITO_USER_POOL_ID="$pool_id" \
                 VITE_COGNITO_CLIENT_ID="$client_id" \
                 npm run build
@@ -258,8 +271,15 @@ deploy_aws() {
         echo ">> Uploading frontend build to S3..."
         bucket="$(tf_output frontend_bucket)"
         aws s3 sync "${SCRIPT_DIR}/frontend/dist" "s3://${bucket}" --delete
+
+        # CloudFront caches index.html; without this the old bundle is served for up to a day.
+        # (The first 1,000 invalidation paths per month are free.)
+        distribution="$(tf_output frontend_distribution_id)"
+        aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*' >/dev/null
+
         echo ">> Frontend: $(tf_output frontend_hosting_url)"
-        echo ">> Backend:  ${url}/docs"
+        echo ">> API:      ${api_url}/health"
+        echo ">> Chat:     AgentCore runtime $(tf_output agent_runtime_id) (image tag ${agent_tag})"
     }
 
     # Same ":latest" trick as the backend: Lambda resolves the tag to an image digest when the
@@ -294,11 +314,12 @@ deploy_aws() {
         fi
     }
 
-    # Order matters: the frontend bundle needs the backend's IP, which only
-    # exists once the backend task is running.
+    # Order matters: images must exist before Terraform creates the things that run them, and
+    # the frontend bundle needs the API and agent URLs that Terraform outputs.
     deploy_registry
     push_backend_image
     push_lambda_images
+    push_agent_image
     deploy_infra
     deploy_backend
     deploy_lambdas
@@ -306,7 +327,9 @@ deploy_aws() {
 }
 
 destroy_aws() {
-    echo ">> Destroying AWS resources (frontend and backend; Lambdas, DynamoDB data, Cognito, S3 receipts, SQS are kept: they cost nothing while idle)..."
+    # Terraform also destroys what depends on these two: CloudFront, the HTTP API with its VPC
+    # link, Cloud Map and the chat agent runtime. Deleting a CloudFront distribution takes minutes.
+    echo ">> Destroying AWS resources (frontend, CloudFront, backend, HTTP API, chat agent; Lambdas, DynamoDB data, Cognito, S3 receipts, SQS are kept: they cost nothing while idle)..."
     cd "${SCRIPT_DIR}/terraform"
     terraform init
     terraform destroy -target=module.frontend_bucket -target=module.backend_ecs \

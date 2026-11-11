@@ -75,39 +75,3 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     }
   }
 }
-
-resource "aws_s3_bucket_website_configuration" "this" {
-  for_each = { for k, v in var.buckets : k => v if v.website_hosting }
-
-  bucket = aws_s3_bucket.this[each.key].id
-
-  index_document {
-    suffix = each.value.index_document
-  }
-
-  error_document {
-    key = each.value.error_document
-  }
-}
-
-resource "aws_s3_bucket_policy" "public_read" {
-  for_each = { for k, v in var.buckets : k => v if v.website_hosting }
-
-  bucket = aws_s3_bucket.this[each.key].id
-
-  # Ensure public access block is removed before applying policy
-  depends_on = [aws_s3_bucket_public_access_block.this]
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "PublicReadGetObject"
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.this[each.key].arn}/*"
-      }
-    ]
-  })
-}

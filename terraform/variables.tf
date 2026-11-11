@@ -57,3 +57,33 @@ variable "force_destroy_buckets" {
   type        = bool
   default     = false
 }
+
+variable "extra_cors_origins" {
+  description = "Extra browser origins allowed to call the API and upload receipts, for example [\"http://localhost:5173\"] to run the frontend locally against AWS."
+  type        = list(string)
+  default     = []
+}
+
+variable "chat_model_id" {
+  description = "Bedrock inference profile id of the chat agent's model. List them with: aws bedrock list-inference-profiles. Claude models (for example eu.anthropic.claude-sonnet-5-5) need the Anthropic use-case form submitted for the account first."
+  type        = string
+  default     = "eu.amazon.nova-pro-v1:0"
+}
+
+variable "agent_image_tag" {
+  description = "Tag of the agent image the runtime runs. deploy.sh passes a unique tag per build; a new tag creates a new runtime version."
+  type        = string
+  default     = "latest"
+}
+
+variable "budget_alert_email" {
+  description = "Email for an AWS Budgets alert at 80% of monthly_budget_usd. Empty = no budget is created."
+  type        = string
+  default     = ""
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly cost budget for the account, in USD."
+  type        = number
+  default     = 10
+}
