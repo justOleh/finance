@@ -1,6 +1,6 @@
 ADR-009: Authenticate with Amazon Cognito (custom login form, JWT verified in the backend)
 
-**Status** Accepted
+**Status** Accepted. **Note ([ADR-014](ADR-014-chat-agent-facade-on-agentcore.md), in code, not deployed yet):** the "no TLS" consequence ends with the HTTP API and CloudFront; the same access token is also accepted by the chat agent's AgentCore Runtime. With HTTPS in place the Hosted UI becomes possible, but the custom login form stays for now.
 **Date** 2026-11-09
 
 ## Context

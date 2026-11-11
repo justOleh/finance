@@ -1,6 +1,6 @@
 # ADR-011: Drop the backend IP allow-list; Cognito is the only access control
 
-**Status** Accepted (supersedes the allow-list part of [ADR-007](ADR-007-backend-on-ecs-fargate-no-alb.md) and the last bullet of [ADR-009](ADR-009-cognito-authentication.md))
+**Status** Accepted (supersedes the allow-list part of [ADR-007](ADR-007-backend-on-ecs-fargate-no-alb.md) and the last bullet of [ADR-009](ADR-009-cognito-authentication.md)). **Amended by [ADR-014](ADR-014-chat-agent-facade-on-agentcore.md) (in code, not deployed yet):** the consequences below about plain HTTP, the open port and the public `/docs` end once the HTTP API is deployed (TLS, token checked at the gateway, throttling, backend port closed to the internet).
 **Date** 2026-11-09
 
 ## Context

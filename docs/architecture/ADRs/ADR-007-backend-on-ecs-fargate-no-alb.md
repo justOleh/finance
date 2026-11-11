@@ -1,6 +1,6 @@
 ADR-007: Run the backend on ECS Fargate with a public IP, no load balancer
 
-**Status** Accepted (the IP allow-list was removed by [ADR-011](ADR-011-drop-backend-ip-allow-list.md))
+**Status** Accepted (the IP allow-list was removed by [ADR-011](ADR-011-drop-backend-ip-allow-list.md)). **Amended by [ADR-014](ADR-014-chat-agent-facade-on-agentcore.md) (in code, not deployed yet):** the task is no longer reached by its public IP. An API Gateway HTTP API with a VPC link and Cloud Map gives a stable HTTPS URL without a load balancer, and the frontend is served by CloudFront from a private bucket. The task keeps a public IP for outbound calls only.
 **Date** 2026-11-08
 
 ## Context
