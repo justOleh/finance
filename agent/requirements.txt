@@ -1,0 +1,4 @@
+# Shipped in the container image. Keep in sync with pyproject.toml.
+strands-agents==1.64.0
+bedrock-agentcore==1.26.0
+httpx==0.28.1

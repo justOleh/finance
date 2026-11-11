@@ -1,0 +1,32 @@
+[project]
+name = "my-finance-agent"
+version = "0.1.0"
+description = "Chat agent facade over the my-finance REST API (ADR-014)"
+requires-python = ">=3.12"
+# Test and local-run environment. The container image installs the same pins from requirements.txt.
+dependencies = [
+  "strands-agents==1.64.0",
+  "bedrock-agentcore==1.26.0",
+  "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.3",
+  "ruff==0.8.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP"]
